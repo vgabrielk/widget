@@ -119,3 +119,27 @@
     @apply bg-card border border-border rounded-xl p-6 hover:shadow-md transition-all;
   }
 }
+
+/* Mobile Safe Area Support */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Safe area utility class */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 12px);
+}
+
+/* Prevent body scroll behind safe area on iOS */
+@supports (-webkit-touch-callout: none) {
+  body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+  
+  html {
+    height: -webkit-fill-available;
+  }
+}

@@ -1120,7 +1120,7 @@ export default function InboxPage() {
               </div>
 
               {/* Input */}
-              <div className="p-3 sm:p-4 border-t bg-background">
+              <div className="p-3 sm:p-4 pb-safe border-t bg-background" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
                 {selectedRoom.status === 'closed' ? (
                   <div className="text-center py-3 sm:py-4 text-muted-foreground">
                     <p className="text-xs sm:text-sm">Esta conversa está fechada. Reabra para continuar.</p>
