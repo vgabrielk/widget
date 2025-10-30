@@ -696,6 +696,15 @@ export default function InboxPage() {
       .slice(0, 2);
   };
 
+  // Check if visitor is online (activity within last 3 minutes)
+  const isVisitorOnline = (lastActivity: string | null): boolean => {
+    if (!lastActivity) return false;
+    const now = new Date();
+    const lastActivityTime = new Date(lastActivity);
+    const diffMinutes = (now.getTime() - lastActivityTime.getTime()) / (1000 * 60);
+    return diffMinutes < 3;
+  };
+
   const formatTime = (date: string) => {
     const d = new Date(date);
     const now = new Date();
@@ -882,9 +891,16 @@ export default function InboxPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span className="font-semibold text-sm sm:text-base truncate">
-                                  {room.visitor_name || 'Visitante'}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-sm sm:text-base truncate">
+                                    {room.visitor_name || 'Visitante'}
+                                  </span>
+                                  <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                                    isVisitorOnline(room.last_activity) 
+                                      ? 'bg-green-500 animate-pulse' 
+                                      : 'bg-gray-400'
+                                  }`} title={isVisitorOnline(room.last_activity) ? 'Online' : 'Offline'} />
+                                </div>
                                 {room.unread_count > 0 && (
                                   <Badge 
                                     variant="destructive" 
@@ -968,9 +984,20 @@ export default function InboxPage() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-sm sm:text-base truncate">
-                      {selectedRoom.visitor_name || 'Visitante'}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-sm sm:text-base truncate">
+                        {selectedRoom.visitor_name || 'Visitante'}
+                      </h3>
+                      <Badge 
+                        variant={isVisitorOnline(selectedRoom.last_activity) ? 'default' : 'secondary'} 
+                        className="h-4 sm:h-5 text-xs flex items-center gap-1"
+                      >
+                        <div className={`h-1.5 w-1.5 rounded-full ${
+                          isVisitorOnline(selectedRoom.last_activity) ? 'bg-green-500' : 'bg-gray-400'
+                        }`} />
+                        {isVisitorOnline(selectedRoom.last_activity) ? 'Online' : 'Offline'}
+                      </Badge>
+                    </div>
                     <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
                       {selectedRoom.visitor_email && (
                         <span className="flex items-center gap-1 truncate">
@@ -978,9 +1005,6 @@ export default function InboxPage() {
                           <span className="truncate hidden sm:inline">{selectedRoom.visitor_email}</span>
                         </span>
                       )}
-                      <Badge variant={selectedRoom.status === 'open' ? 'default' : 'secondary'} className="h-4 sm:h-5 text-xs">
-                        {selectedRoom.status === 'open' ? 'Online' : 'Offline'}
-                      </Badge>
                     </div>
                   </div>
                 </div>

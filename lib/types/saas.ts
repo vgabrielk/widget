@@ -70,6 +70,7 @@ export interface Room {
   unread_count: number;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_activity: string | null;
   
   // Tracking
   page_url: string | null;

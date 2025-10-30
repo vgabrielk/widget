@@ -49,6 +49,7 @@
     let hasActiveRoom = false;
     let selectedImage = null;
     let notificationAudio = null;
+    let heartbeatInterval = null;
     
     // Rate limiting
     const RATE_LIMIT = {
@@ -628,8 +629,48 @@
         console.log('ChatWidget: Initialized successfully');
     }
 
+    // Heartbeat para indicar que visitante está online
+    function startHeartbeat() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+        
+        // Enviar heartbeat a cada 30 segundos
+        heartbeatInterval = setInterval(async () => {
+            if (roomId && isOpen) {
+                try {
+                    await fetch(`${API_BASE}/api/visitor/heartbeat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ roomId }),
+                    });
+                } catch (err) {
+                    console.warn('ChatWidget: Heartbeat failed:', err);
+                }
+            }
+        }, 30000); // 30 segundos
+        
+        // Enviar heartbeat imediatamente ao iniciar
+        if (roomId) {
+            fetch(`${API_BASE}/api/visitor/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId }),
+            }).catch(err => console.warn('ChatWidget: Initial heartbeat failed:', err));
+        }
+    }
+    
+    function stopHeartbeat() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
+    }
+
     function cleanupSubscriptions() {
         console.log('ChatWidget: Cleaning up subscriptions...');
+        
+        stopHeartbeat();
         
         if (messageChannel) {
             supabaseClient.removeChannel(messageChannel);
@@ -1419,6 +1460,7 @@
         
         if (hasSubmittedInfo && roomId) {
             loadMessages();
+            startHeartbeat(); // Iniciar heartbeat quando chat abre
         }
     }
 
