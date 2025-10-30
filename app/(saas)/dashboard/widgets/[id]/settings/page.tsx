@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Widget } from '@/lib/types/saas';
 import { useParams, useRouter } from 'next/navigation';
@@ -47,18 +47,7 @@ export default function WidgetSettingsPage() {
   const [userEmail, setUserEmail] = useState<string>('');
   const supabase = createClient();
 
-  useEffect(() => {
-    const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        setUserEmail(user.email);
-      }
-    };
-    loadUser();
-    loadWidget();
-  }, [widgetId]);
-
-  const loadWidget = async () => {
+  const loadWidget = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('widgets')
@@ -84,20 +73,31 @@ export default function WidgetSettingsPage() {
       console.error('Error loading widget:', error);
       router.push('/dashboard');
     }
-  };
+  }, [widgetId, supabase, router]);
 
-  const addDomain = () => {
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        setUserEmail(user.email);
+      }
+    };
+    loadUser();
+    loadWidget();
+  }, [widgetId, supabase, loadWidget]);
+
+  const addDomain = useCallback(() => {
     if (newDomain.trim() && !domains.includes(newDomain.trim())) {
       setDomains([...domains, newDomain.trim()]);
       setNewDomain('');
     }
-  };
+  }, [newDomain, domains]);
 
-  const removeDomain = (domain: string) => {
+  const removeDomain = useCallback((domain: string) => {
     setDomains(domains.filter(d => d !== domain));
-  };
+  }, [domains]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setLoading(true);
     setSaved(false);
 
@@ -125,7 +125,21 @@ export default function WidgetSettingsPage() {
     } finally {
       setLoading(false);
     }
+  }, [widgetId, supabase, name, brandColor, position, welcomeMessage, companyName, isActive, domains]);
+
+  const copyEmbedCode = useCallback(() => {
+    if (!widget) return;
+    const embedCode = `<!-- ChatWidget -->
+<script>
+  window.ChatWidgetConfig = {
+    publicKey: '${widget.public_key}',
   };
+</script>
+<script src="${window.location.origin}/widget.js"></script>`;
+    navigator.clipboard.writeText(embedCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [widget]);
 
   const embedCode = widget ? `<!-- ChatWidget -->
 <script>
@@ -134,12 +148,6 @@ export default function WidgetSettingsPage() {
   };
 </script>
 <script src="${window.location.origin}/widget.js"></script>` : '';
-
-  const copyEmbedCode = () => {
-    navigator.clipboard.writeText(embedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   if (!widget) {
     return (
