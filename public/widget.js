@@ -1137,7 +1137,21 @@
         // Avatar
         const avatar = document.createElement('div');
         avatar.className = `chat-message-avatar ${isVisitor ? 'visitor' : 'agent'}`;
-        avatar.textContent = (message.sender_name || 'V').charAt(0).toUpperCase();
+        
+        // Se tiver sender_avatar (imagem), mostrar a imagem
+        if (message.sender_avatar) {
+            const avatarImg = document.createElement('img');
+            avatarImg.src = message.sender_avatar;
+            avatarImg.alt = message.sender_name || 'Avatar';
+            avatarImg.style.width = '100%';
+            avatarImg.style.height = '100%';
+            avatarImg.style.objectFit = 'cover';
+            avatarImg.style.borderRadius = '50%';
+            avatar.appendChild(avatarImg);
+        } else {
+            // Fallback para inicial do nome
+            avatar.textContent = (message.sender_name || 'V').charAt(0).toUpperCase();
+        }
 
         // Message bubble
             const bubble = document.createElement('div');
