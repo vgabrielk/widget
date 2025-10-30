@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { MessageSquare, ArrowLeft, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { JelloLogo } from '@/components/jello-logo';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -70,43 +71,15 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary/90 to-primary/80 p-12 flex-col justify-between relative overflow-hidden">
-        {/* Decorative circles */}
-        <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 w-fit">
-            <JelloLogo width={140} height={36} priority />
-          </div>
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <h1 className="text-4xl font-bold text-white leading-tight">
-            Conecte-se com seus visitantes em tempo real
-          </h1>
-          <p className="text-lg text-white/90">
-            Sistema de chat profissional para aumentar suas conversões e melhorar o suporte ao cliente.
-          </p>
-          
-          <div className="flex gap-4 pt-4">
-            <div className="flex flex-col gap-1">
-              <div className="text-3xl font-bold text-white">10k+</div>
-              <div className="text-sm text-white/80">Usuários Ativos</div>
-            </div>
-            <div className="w-px bg-white/20"></div>
-            <div className="flex flex-col gap-1">
-              <div className="text-3xl font-bold text-white">99%</div>
-              <div className="text-sm text-white/80">Satisfação</div>
-            </div>
-            <div className="w-px bg-white/20"></div>
-            <div className="flex flex-col gap-1">
-              <div className="text-3xl font-bold text-white">24/7</div>
-              <div className="text-sm text-white/80">Suporte</div>
-            </div>
-          </div>
-        </div>
+      {/* Left Side - Banner */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        <Image
+          src="/banner.jpg"
+          alt="Banner"
+          fill
+          priority
+          className="object-cover"
+        />
       </div>
 
       {/* Right Side - Login Form */}

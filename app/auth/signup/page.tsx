@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { MessageSquare, ArrowLeft, CheckCircle2, Mail, Lock, AlertCircle, Sparkles, Loader2 } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { JelloLogo } from '@/components/jello-logo';
+import Image from 'next/image';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -109,56 +110,15 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary/90 to-primary/80 p-12 flex-col justify-between relative overflow-hidden">
-        {/* Decorative circles */}
-        <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 w-fit">
-            <JelloLogo width={140} height={36} priority />
-          </div>
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur">
-            <Sparkles className="h-4 w-4 text-white" />
-            <span className="text-sm text-white font-medium">Comece grátis hoje</span>
-          </div>
-          
-          <h1 className="text-4xl font-bold text-white leading-tight">
-            Configure em minutos, venda por anos
-          </h1>
-          <p className="text-lg text-white/90">
-            Junte-se a milhares de empresas que já melhoraram seu atendimento com nossa plataforma.
-          </p>
-          
-          {/* Features */}
-          <div className="space-y-4 pt-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-6 w-6 text-white flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium">Setup em 2 minutos</p>
-                <p className="text-white/80 text-sm">Copie e cole o código no seu site</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-6 w-6 text-white flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium">Chat em tempo real</p>
-                <p className="text-white/80 text-sm">Responda instantaneamente seus clientes</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-6 w-6 text-white flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium">14 dias grátis</p>
-                <p className="text-white/80 text-sm">Sem cartão de crédito necessário</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Left Side - Banner */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        <Image
+          src="/banner.jpg"
+          alt="Banner"
+          fill
+          priority
+          className="object-cover"
+        />
       </div>
 
       {/* Right Side - Signup Form */}

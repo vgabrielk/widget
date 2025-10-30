@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { JelloLogo } from '@/components/jello-logo';
+import { JelloLogoCompact } from '@/components/jello-logo';
 
 interface SidebarProps {
   email?: string;
@@ -105,7 +105,7 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
       {/* Logo */}
       <div className="flex h-16 sm:h-20 items-center justify-center border-b border-[hsl(var(--sidebar-border))] px-3 sm:px-4 py-4 sm:py-5">
         <Link href="/dashboard" className="flex items-center">
-          <JelloLogo width={100} height={26} priority />
+          <JelloLogoCompact size={40} />
         </Link>
       </div>
 
