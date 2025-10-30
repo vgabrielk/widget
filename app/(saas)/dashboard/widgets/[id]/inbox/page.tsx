@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { 
   Send, 
   Search, 
@@ -23,11 +23,13 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query';
+import { useUser } from '@/lib/contexts/user-context';
 
 export default function InboxPage() {
   const params = useParams();
   const router = useRouter();
   const widgetId = params.id as string;
+  const { user, profile } = useUser();
   
   const [widget, setWidget] = useState<Widget | null>(null);
   const [liveRooms, setLiveRooms] = useState<Room[]>([]); // Live updated rooms from realtime
@@ -550,7 +552,8 @@ export default function InboxPage() {
         room_id: roomIdAtSend,
         sender_type: 'agent',
         sender_id: user?.id || 'agent',
-        sender_name: user?.email?.split('@')[0] || 'Suporte',
+        sender_name: profile?.full_name || user?.email?.split('@')[0] || 'Suporte',
+        sender_avatar: profile?.avatar_url || null,
         content: messageContent,
         message_type: 'text',
       });

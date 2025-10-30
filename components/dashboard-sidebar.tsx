@@ -15,9 +15,10 @@ import {
   LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { JelloLogoCompact } from '@/components/jello-logo';
+import { useUser } from '@/lib/contexts/user-context';
 
 interface SidebarProps {
   email?: string;
@@ -79,6 +80,7 @@ const settingsNavItems: NavItem[] = [
 
 export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const { profile } = useUser();
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -165,13 +167,16 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
       <div className="border-t border-[hsl(var(--sidebar-border))] p-4">
         <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-muted/50 transition-colors">
           <Avatar className="h-10 w-10 border-2 border-primary">
+            {profile?.avatar_url && (
+              <AvatarImage src={profile.avatar_url} alt={profile.full_name || email || 'User'} />
+            )}
             <AvatarFallback className="bg-primary/10 text-primary font-semibold">
               {email ? getInitials(email) : 'U'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 overflow-hidden">
             <p className="text-sm font-medium truncate">
-              {email?.split('@')[0] || 'User'}
+              {profile?.full_name || email?.split('@')[0] || 'User'}
             </p>
             <p className="text-xs text-muted-foreground truncate">
               {email || 'user@example.com'}

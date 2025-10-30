@@ -65,7 +65,7 @@ export function DashboardLayout({
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Header */}
-        <header className="flex h-14 sm:h-16 items-center justify-between border-b border-border bg-card px-3 sm:px-6 lg:px-8">
+        <header className="flex h-16 sm:h-20 items-center justify-between border-b border-border bg-card px-3 sm:px-6 lg:px-8 py-4 sm:py-5">
           <div className="flex items-center gap-2 sm:gap-4 flex-1">
             {/* Mobile Menu Button */}
             <Button
