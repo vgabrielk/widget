@@ -217,16 +217,9 @@ function useInfiniteQuery<
 >(props: UseInfiniteQueryProps<T>) {
   const { tableName, columns, pageSize, queryKey } = props
   
-  // Detect queryKey changes and recreate store BEFORE useSyncExternalStore
-  const prevQueryKeyRef = useRef(queryKey)
+  // Create store only once - avoid recreating during render
   const storeRef = useRef(createStore<TData, T>(props))
-  
-  // Check if queryKey changed - if so, recreate store immediately
-  if (prevQueryKeyRef.current !== queryKey) {
-    prevQueryKeyRef.current = queryKey
-    // Recreate store with new props synchronously during render
-    storeRef.current = createStore<TData, T>(props)
-  }
+  const prevQueryKeyRef = useRef(queryKey)
 
   const state = useSyncExternalStore(
     storeRef.current.subscribe,
@@ -234,12 +227,19 @@ function useInfiniteQuery<
     () => initialState as StoreState<TData>
   )
   
-  // Initialize store after mounting or when queryKey changes
-  // CRITICAL: Don't include state.hasInitialFetch in deps to prevent infinite loops
+  // Initialize once, or reset when queryKey changes
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      storeRef.current.initialize()
+    if (typeof window === 'undefined') return
+
+    // If queryKey changed, recreate store and reset
+    if (prevQueryKeyRef.current !== queryKey) {
+      prevQueryKeyRef.current = queryKey
+      storeRef.current = createStore<TData, T>(props)
     }
+
+    // Initialize the store
+    storeRef.current.initialize()
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableName, columns, pageSize, queryKey])
 
