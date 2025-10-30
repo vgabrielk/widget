@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Inbox, MessageSquare, Clock, CheckCircle2, Loader2 } from 'lucide-react';
 import { Room } from '@/lib/types/saas';
-import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query';
+import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query-simple';
 
 type RoomWithWidget = Room & {
   widgets: {
