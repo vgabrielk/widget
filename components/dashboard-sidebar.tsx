@@ -103,9 +103,9 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
   return (
     <aside className="flex h-full w-full flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))]">
       {/* Logo */}
-      <div className="flex h-14 sm:h-16 items-center justify-center border-b border-[hsl(var(--sidebar-border))] px-4 sm:px-6">
+      <div className="flex h-14 sm:h-16 items-center justify-center border-b border-[hsl(var(--sidebar-border))] px-3 sm:px-4">
         <Link href="/dashboard" className="flex items-center">
-          <JelloLogo width={140} height={36} priority />
+          <JelloLogo width={100} height={26} priority />
         </Link>
       </div>
 
