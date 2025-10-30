@@ -52,8 +52,11 @@ export default function InboxPage() {
 
   // Load rooms
   const loadRooms = useCallback(async () => {
+    console.log('📥 [loadRooms] START', { widgetId });
     try {
       setIsRoomsLoading(true);
+      console.log('📡 [loadRooms] Fetching rooms from Supabase...');
+      
       const { data, error } = await supabase
         .from('rooms')
         .select('*')
@@ -62,19 +65,26 @@ export default function InboxPage() {
         .order('created_at', { ascending: false })
         .limit(100);
 
+      console.log('📨 [loadRooms] Response received', { count: data?.length || 0, hasError: !!error });
+
       if (error) throw error;
       setRooms(data || []);
+      console.log('✅ [loadRooms] Rooms loaded successfully');
     } catch (error) {
-      console.error('Error loading rooms:', error);
+      console.error('❌ [loadRooms] Error:', error);
     } finally {
+      console.log('🏁 [loadRooms] FINALLY - setting isRoomsLoading=false');
       setIsRoomsLoading(false);
     }
   }, [widgetId, supabase]);
 
   // Load messages for selected room
   const loadMessages = useCallback(async (roomId: string) => {
+    console.log('💬 [loadMessages] START', { roomId });
     try {
       setIsMessagesLoading(true);
+      console.log('📡 [loadMessages] Fetching messages from Supabase...');
+      
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -82,11 +92,15 @@ export default function InboxPage() {
         .order('created_at', { ascending: true })
         .limit(200);
 
+      console.log('📨 [loadMessages] Response received', { count: data?.length || 0, hasError: !!error });
+
       if (error) throw error;
       setMessages(data || []);
+      console.log('✅ [loadMessages] Messages loaded successfully');
     } catch (error) {
-      console.error('Error loading messages:', error);
+      console.error('❌ [loadMessages] Error:', error);
     } finally {
+      console.log('🏁 [loadMessages] FINALLY - setting isMessagesLoading=false');
       setIsMessagesLoading(false);
     }
   }, [supabase]);
@@ -102,15 +116,44 @@ export default function InboxPage() {
     loadUser();
   }, [supabase]);
 
-  // Load rooms on mount
+  // Load rooms on mount with timeout safety
   useEffect(() => {
-    loadRooms();
+    console.log('🚀 [useEffect] Loading rooms...');
+    
+    // Safety timeout
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ [TIMEOUT] Rooms loading took too long! Force stopping...');
+      setIsRoomsLoading(false);
+    }, 10000);
+    
+    loadRooms().finally(() => {
+      clearTimeout(timeoutId);
+    });
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [loadRooms]);
 
 
-  // Load widget
+  // Load widget with timeout safety
   useEffect(() => {
-    loadWidget();
+    console.log('🚀 [useEffect] Loading widget...', { widgetId });
+    
+    // Safety timeout - if loading takes more than 10s, force stop loading
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ [TIMEOUT] Widget loading took too long! Force stopping...');
+      setIsWidgetLoading(false);
+      router.push('/dashboard');
+    }, 10000);
+    
+    loadWidget().finally(() => {
+      clearTimeout(timeoutId);
+    });
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetId]);
 
@@ -259,24 +302,37 @@ export default function InboxPage() {
 
 
   const loadWidget = useCallback(async () => {
+    console.log('🔄 [loadWidget] START', { widgetId });
     try {
+      console.log('📡 [loadWidget] Fetching widget from Supabase...');
       const { data, error } = await supabase
         .from('widgets')
         .select('*')
         .eq('id', widgetId)
         .single();
 
-      if (error) throw error;
+      console.log('📨 [loadWidget] Response received', { hasData: !!data, hasError: !!error });
+
+      if (error) {
+        console.error('❌ [loadWidget] Supabase error:', error);
+        throw error;
+      }
+      
       if (!data) {
+        console.warn('⚠️ [loadWidget] No widget found, redirecting...');
+        setIsWidgetLoading(false); // CRITICAL: Set before redirect
         router.push('/dashboard');
         return;
       }
 
+      console.log('✅ [loadWidget] Widget loaded successfully');
       setWidget(data);
     } catch (error) {
-      console.error('Error loading widget:', error);
+      console.error('❌ [loadWidget] Error:', error);
+      setIsWidgetLoading(false); // CRITICAL: Set before redirect
       router.push('/dashboard');
     } finally {
+      console.log('🏁 [loadWidget] FINALLY - setting isWidgetLoading=false');
       setIsWidgetLoading(false);
     }
   }, [widgetId, supabase, router]);
