@@ -92,11 +92,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (fetchError) throw fetchError;
       
-      return data as UserProfile;
+      return data as UserProfile | null;
     } catch (err) {
       console.error('Error fetching profile:', err);
       throw err;
@@ -128,6 +128,34 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     if (!user) throw new Error('No user logged in');
 
     try {
+      // First, check if profile exists
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        // Profile doesn't exist, create it
+        const { data, error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email || '',
+            ...updates,
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+
+        const newProfile = data as UserProfile;
+        setProfile(newProfile);
+        saveToCache(newProfile);
+        return;
+      }
+
+      // Profile exists, update it
       const { data, error: updateError } = await supabase
         .from('profiles')
         .update(updates)
@@ -141,6 +169,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setProfile(updatedProfile);
       saveToCache(updatedProfile);
     } catch (err: any) {
+      console.error('Error updating profile:', err);
       throw new Error(err.message || 'Failed to update profile');
     }
   }, [user, supabase, saveToCache]);
@@ -234,6 +263,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           if (profileData) {
             setProfile(profileData);
             saveToCache(profileData);
+          } else {
+            // Profile doesn't exist, create it
+            try {
+              const { data: newProfile, error: insertError } = await supabase
+                .from('profiles')
+                .insert({
+                  id: currentUser.id,
+                  email: currentUser.email || '',
+                })
+                .select()
+                .single();
+
+              if (!insertError && newProfile) {
+                setProfile(newProfile as UserProfile);
+                saveToCache(newProfile as UserProfile);
+              }
+            } catch (err) {
+              console.error('Error creating profile:', err);
+            }
           }
           setLoading(false);
         }
@@ -257,6 +305,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         if (profileData) {
           setProfile(profileData);
           saveToCache(profileData);
+        } else {
+          // Create profile if doesn't exist
+          try {
+            const { data: newProfile, error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: session.user.id,
+                email: session.user.email || '',
+              })
+              .select()
+              .single();
+
+            if (!insertError && newProfile) {
+              setProfile(newProfile as UserProfile);
+              saveToCache(newProfile as UserProfile);
+            }
+          } catch (err) {
+            console.error('Error creating profile on sign in:', err);
+          }
         }
       }
     });
