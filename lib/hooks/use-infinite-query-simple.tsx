@@ -38,7 +38,7 @@ interface UseInfiniteQueryResult<TData> {
   isSuccess: boolean;
   error: Error | null;
   hasMore: boolean;
-  fetchNextPage: () => void;
+  fetchNextPage: () => Promise<void>;
 }
 
 export function useInfiniteQuery<
@@ -185,13 +185,13 @@ export function useInfiniteQuery<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey]);
 
-  const fetchNextPage = () => {
+  const fetchNextPage = async () => {
     console.log('➡️ [SIMPLE-HOOK] fetchNextPage called', {
       currentLength: data.length,
       hasMore: count > data.length,
     });
     if (count > data.length && !isFetching) {
-      fetchPage(data.length);
+      await fetchPage(data.length);
     }
   };
 
