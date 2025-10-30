@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { MessageSquare, ArrowLeft, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { JelloLogo, JelloLogoCompact } from '@/components/jello-logo';
+import { JelloLogo } from '@/components/jello-logo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -78,7 +78,7 @@ export default function LoginPage() {
         
         <div className="relative z-10">
           <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 w-fit">
-            <JelloLogoCompact size={48} />
+            <JelloLogo width={140} height={36} priority />
           </div>
         </div>
 

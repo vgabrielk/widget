@@ -29,10 +29,10 @@ export function JelloLogo({ className, width = 150, height = 40, priority = fals
     );
   }
 
-  // Dark mode: use jello-logo.png (square logo)
-  // Light mode: use jello-horizontal.png (horizontal logo)
+  // Dark mode: use jello-horizontal-dark.png
+  // Light mode: use jello-horizontal.png
   const logoSrc = resolvedTheme === 'dark' 
-    ? '/jello-logo.png' 
+    ? '/jello-horizontal-dark.png' 
     : '/jello-horizontal.png';
 
   const logoAlt = 'Jello Logo';
