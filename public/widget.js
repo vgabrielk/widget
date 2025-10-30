@@ -667,10 +667,37 @@
         }
     }
 
+    // Marcar visitante como offline
+    function markAsOffline() {
+        if (!roomId) return;
+        
+        try {
+            // Usar sendBeacon para garantir que seja enviado mesmo ao fechar página
+            const data = JSON.stringify({ roomId });
+            const blob = new Blob([data], { type: 'application/json' });
+            
+            // sendBeacon é mais confiável para eventos de unload
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(`${API_BASE}/api/visitor/offline`, blob);
+            } else {
+                // Fallback para fetch síncrono
+                fetch(`${API_BASE}/api/visitor/offline`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: data,
+                    keepalive: true, // Mantém a requisição mesmo após fechar página
+                }).catch(() => {});
+            }
+        } catch (err) {
+            console.warn('ChatWidget: Failed to mark as offline:', err);
+        }
+    }
+
     function cleanupSubscriptions() {
         console.log('ChatWidget: Cleaning up subscriptions...');
         
         stopHeartbeat();
+        markAsOffline(); // Marcar como offline ao limpar
         
         if (messageChannel) {
             supabaseClient.removeChannel(messageChannel);
@@ -1199,10 +1226,16 @@
 
         function handleVisibilityChange() {
             if (document.hidden) {
-                console.log('ChatWidget: Tab hidden, preserving state...');
+                console.log('ChatWidget: Tab hidden, pausing heartbeat...');
+                // Pausar heartbeat quando aba está escondida
+                stopHeartbeat();
             } else {
-                console.log('ChatWidget: Tab visible, checking UI state...');
+                console.log('ChatWidget: Tab visible, resuming...');
                 restoreWidgetState();
+                // Retomar heartbeat se chat estiver aberto
+                if (isOpen && roomId && hasSubmittedInfo) {
+                    startHeartbeat();
+                }
             }
         }
 
