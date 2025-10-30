@@ -1,0 +1,243 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
+import { MessageSquare, ArrowLeft, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+  const router = useRouter();
+  const supabase = createClient();
+
+  // Check if user is already authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        router.push('/dashboard');
+      } else {
+        setChecking(false);
+      }
+    };
+    checkAuth();
+  }, [router, supabase]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      router.push('/dashboard');
+      router.refresh();
+    } catch (error: any) {
+      setError(error.message || 'Erro ao fazer login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show loading while checking authentication
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Verificando autenticação...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex">
+      {/* Left Side - Branding */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary/90 to-primary/80 p-12 flex-col justify-between relative overflow-hidden">
+        {/* Decorative circles */}
+        <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+        
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
+              <MessageSquare className="h-7 w-7 text-white" />
+            </div>
+            <span className="text-2xl font-bold text-white">ChatWidget</span>
+          </div>
+        </div>
+
+        <div className="relative z-10 space-y-6">
+          <h1 className="text-4xl font-bold text-white leading-tight">
+            Conecte-se com seus visitantes em tempo real
+          </h1>
+          <p className="text-lg text-white/90">
+            Sistema de chat profissional para aumentar suas conversões e melhorar o suporte ao cliente.
+          </p>
+          
+          <div className="flex gap-4 pt-4">
+            <div className="flex flex-col gap-1">
+              <div className="text-3xl font-bold text-white">10k+</div>
+              <div className="text-sm text-white/80">Usuários Ativos</div>
+            </div>
+            <div className="w-px bg-white/20"></div>
+            <div className="flex flex-col gap-1">
+              <div className="text-3xl font-bold text-white">99%</div>
+              <div className="text-sm text-white/80">Satisfação</div>
+            </div>
+            <div className="w-px bg-white/20"></div>
+            <div className="flex flex-col gap-1">
+              <div className="text-3xl font-bold text-white">24/7</div>
+              <div className="text-sm text-white/80">Suporte</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Side - Login Form */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-background relative">
+        <div className="absolute top-6 right-6 flex items-center gap-2">
+          <ThemeToggle />
+        </div>
+
+        <div className="w-full max-w-md space-y-8">
+          {/* Mobile Logo */}
+          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+              <MessageSquare className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <span className="text-2xl font-bold">ChatWidget</span>
+          </div>
+
+          {/* Header */}
+          <div className="space-y-2">
+            <h2 className="text-3xl font-bold tracking-tight">
+              Bem-vindo de volta
+            </h2>
+            <p className="text-muted-foreground">
+              Entre com suas credenciais para acessar sua conta
+            </p>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+              <AlertCircle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-destructive">
+                  {error}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="seu@email.com"
+                    disabled={loading}
+                    className="pl-10 h-12"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium">
+                  Senha
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                    disabled={loading}
+                    className="pl-10 h-12"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end">
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Esqueceu sua senha?
+                </Link>
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 text-base font-medium"
+              size="lg"
+            >
+              {loading ? 'Entrando...' : 'Entrar'}
+            </Button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Novo por aqui?
+              </span>
+            </div>
+          </div>
+
+          {/* Sign Up Link */}
+          <div className="space-y-4">
+            <Button variant="outline" asChild className="w-full h-12">
+              <Link href="/auth/signup">
+                Criar Conta Grátis
+              </Link>
+            </Button>
+
+            <Button variant="ghost" asChild className="w-full">
+              <Link href="/">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar para home
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
