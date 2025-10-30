@@ -195,7 +195,6 @@ export function ChatWidget({
                     onKeyPress={handleKeyPress}
                     placeholder="Digite sua mensagem..."
                     className="flex-1 px-4 py-2 border dark:border-gray-700 rounded-full focus:outline-none focus:ring-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                    style={{ focusRing: `2px solid ${brandColor}` }}
                   />
                   <button
                     onClick={handleSend}
@@ -219,7 +218,6 @@ export function ChatWidget({
       {!isOpen && (
         <button
           onClick={toggleOpen}
-          className="fixed z-50 rounded-full p-4 text-white shadow-2xl hover:scale-110 transition-all duration-300 group"
           style={{ backgroundColor: brandColor }}
           className={`fixed ${positionClasses} z-50 rounded-full p-4 text-white shadow-2xl hover:scale-110 transition-all duration-300 group`}
         >

@@ -1,9 +1,27 @@
 import Stripe from 'stripe';
 
-// Initialize Stripe with the secret key from environment variables
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
-  typescript: true,
+// Lazy initialize Stripe client
+let stripeInstance: Stripe | null = null;
+
+function getStripeInstance(): Stripe {
+  if (!stripeInstance) {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    if (!secretKey) {
+      throw new Error('STRIPE_SECRET_KEY environment variable is not set');
+    }
+    stripeInstance = new Stripe(secretKey, {
+      apiVersion: '2025-10-29.clover',
+      typescript: true,
+    });
+  }
+  return stripeInstance;
+}
+
+// Export stripe instance getter
+export const stripe = new Proxy({} as Stripe, {
+  get: (target, prop) => {
+    return (getStripeInstance() as any)[prop];
+  }
 });
 
 // Get the publishable key for client-side usage

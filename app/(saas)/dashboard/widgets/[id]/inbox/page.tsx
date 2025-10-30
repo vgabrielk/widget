@@ -64,8 +64,8 @@ export default function InboxPage() {
   });
 
   // Infinite scroll observer for rooms
-  const roomsObserverRef = useRef<IntersectionObserver>();
-  const lastRoomRef = useCallback((node: HTMLDivElement | null) => {
+  const roomsObserverRef = useRef<IntersectionObserver | null>(null);
+  const lastRoomRef = useCallback((node: HTMLElement | null) => {
     if (isRoomsLoading || isRoomsFetching) return;
     if (roomsObserverRef.current) roomsObserverRef.current.disconnect();
     
@@ -140,7 +140,7 @@ export default function InboxPage() {
   }, [historicalMessages, newMessages, selectedRoomId]);
 
   // Scroll observer for loading older messages
-  const messagesObserverRef = useRef<IntersectionObserver>();
+  const messagesObserverRef = useRef<IntersectionObserver | null>(null);
   const loadingOlderMessagesRef = useRef(false);
   const prevMessagesLengthRef = useRef(0);
   
@@ -213,7 +213,8 @@ export default function InboxPage() {
         (payload) => {
           console.log('🔔 Room update received:', payload);
           const updatedRoom = payload.new as Room;
-          const roomId = payload.old?.id || updatedRoom?.id;
+          const oldRoom = payload.old as Partial<Room> | null;
+          const roomId = oldRoom?.id || updatedRoom?.id;
           
           // Update liveRooms optimistically
           if (payload.eventType === 'INSERT' && updatedRoom) {
@@ -682,7 +683,7 @@ export default function InboxPage() {
     }
   };
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | null) => {
     if (!name) return 'V';
     return name
       .split(' ')
@@ -986,7 +987,7 @@ export default function InboxPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => window.open(selectedRoom.page_url, '_blank')}
+                      onClick={() => selectedRoom.page_url && window.open(selectedRoom.page_url, '_blank')}
                       className="text-muted-foreground h-8 w-8 sm:h-10 sm:w-10"
                       title="Ver página"
                     >
@@ -1093,7 +1094,7 @@ export default function InboxPage() {
                                 alt={message.image_name || 'Imagem'}
                                 className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
                                 style={{ maxHeight: '200px' }}
-                                onClick={() => window.open(message.image_url, '_blank')}
+                                onClick={() => message.image_url && window.open(message.image_url, '_blank')}
                               />
                               {message.image_name && (
                                 <p className={`text-xs mt-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Get the widget's Stripe customer ID
     const { data: stripeCustomer, error } = await supabase

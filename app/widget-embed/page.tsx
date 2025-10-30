@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 
-export default function WidgetEmbedPage() {
+function WidgetContent() {
   const searchParams = useSearchParams();
   const [config, setConfig] = useState({
     brandColor: '#6366f1',
@@ -26,12 +26,20 @@ export default function WidgetEmbedPage() {
   }, [searchParams]);
 
   return (
+    <ChatWidget
+      position={config.position}
+      brandColor={config.brandColor}
+      welcomeMessage={config.welcomeMessage}
+    />
+  );
+}
+
+export default function WidgetEmbedPage() {
+  return (
     <div className="h-screen w-screen">
-      <ChatWidget
-        position={config.position}
-        brandColor={config.brandColor}
-        welcomeMessage={config.welcomeMessage}
-      />
+      <Suspense fallback={<div>Loading...</div>}>
+        <WidgetContent />
+      </Suspense>
     </div>
   );
 }

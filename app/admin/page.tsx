@@ -71,7 +71,7 @@ export default function AdminPage() {
   });
 
   // Infinite scroll observer
-  const observerRef = useRef<IntersectionObserver>();
+  const observerRef = useRef<IntersectionObserver | null>(null);
   const lastRoomRef = useCallback((node: HTMLDivElement | null) => {
     if (isLoading || isFetching) return;
     if (observerRef.current) observerRef.current.disconnect();

@@ -3,13 +3,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 
-// Initialize Stripe with secret key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
-});
-
-// Webhook secret for signature verification
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+// Lazy initialize Stripe
+let stripeInstance: Stripe | null = null;
+function getStripe() {
+  if (!stripeInstance) {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    if (!secretKey) {
+      throw new Error('STRIPE_SECRET_KEY is not set');
+    }
+    stripeInstance = new Stripe(secretKey, {
+      apiVersion: '2025-10-29.clover',
+    });
+  }
+  return stripeInstance;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +35,11 @@ export async function POST(req: NextRequest) {
     // Verify webhook signature
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        throw new Error('STRIPE_WEBHOOK_SECRET is not set');
+      }
+      event = getStripe().webhooks.constructEvent(body, signature, webhookSecret);
     } catch (err) {
       console.error('Webhook signature verification failed:', err);
       return NextResponse.json(
@@ -40,7 +51,7 @@ export async function POST(req: NextRequest) {
     // Handle the event
     console.log(`Processing Stripe webhook: ${event.type}`);
 
-    const supabase = createClient();
+    const supabase = await createClient();
 
     switch (event.type) {
       // Customer events
@@ -189,16 +200,16 @@ async function handleSubscriptionUpsert(
       p_stripe_customer_id: subscription.customer as string,
       p_status: subscription.status,
       p_current_period_start: new Date(
-        subscription.current_period_start * 1000
+        (subscription as any).current_period_start * 1000
       ).toISOString(),
       p_current_period_end: new Date(
-        subscription.current_period_end * 1000
+        (subscription as any).current_period_end * 1000
       ).toISOString(),
-      p_cancel_at: subscription.cancel_at
-        ? new Date(subscription.cancel_at * 1000).toISOString()
+      p_cancel_at: (subscription as any).cancel_at
+        ? new Date((subscription as any).cancel_at * 1000).toISOString()
         : null,
-      p_canceled_at: subscription.canceled_at
-        ? new Date(subscription.canceled_at * 1000).toISOString()
+      p_canceled_at: (subscription as any).canceled_at
+        ? new Date((subscription as any).canceled_at * 1000).toISOString()
         : null,
       p_metadata: subscription.metadata || {},
     });
@@ -255,7 +266,7 @@ async function handleCheckoutCompleted(
 
     // If this session created a customer, sync it
     if (session.customer) {
-      const customer = await stripe.customers.retrieve(
+      const customer = await getStripe().customers.retrieve(
         session.customer as string
       );
       
@@ -266,7 +277,7 @@ async function handleCheckoutCompleted(
 
     // If this session created a subscription, sync it
     if (session.subscription) {
-      const subscription = await stripe.subscriptions.retrieve(
+      const subscription = await getStripe().subscriptions.retrieve(
         session.subscription as string
       );
       await handleSubscriptionUpsert(supabase, subscription);
@@ -283,9 +294,9 @@ async function handleInvoicePaid(supabase: any, invoice: Stripe.Invoice) {
     console.log(`Invoice paid: ${invoice.id}`);
     
     // If invoice is for a subscription, update subscription status
-    if (invoice.subscription) {
-      const subscription = await stripe.subscriptions.retrieve(
-        invoice.subscription as string
+    if ((invoice as any).subscription) {
+      const subscription = await getStripe().subscriptions.retrieve(
+        (invoice as any).subscription as string
       );
       await handleSubscriptionUpsert(supabase, subscription);
     }
@@ -299,9 +310,9 @@ async function handleInvoiceFailed(supabase: any, invoice: Stripe.Invoice) {
     console.log(`Invoice payment failed: ${invoice.id}`);
     
     // If invoice is for a subscription, update subscription status
-    if (invoice.subscription) {
-      const subscription = await stripe.subscriptions.retrieve(
-        invoice.subscription as string
+    if ((invoice as any).subscription) {
+      const subscription = await getStripe().subscriptions.retrieve(
+        (invoice as any).subscription as string
       );
       await handleSubscriptionUpsert(supabase, subscription);
     }

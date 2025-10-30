@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Verify widget exists and is active
     const { data: widget, error: widgetError } = await supabase

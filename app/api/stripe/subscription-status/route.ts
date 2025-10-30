@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Get subscription status for the widget
     const { data: subscription, error } = await supabase
