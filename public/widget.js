@@ -1,6 +1,21 @@
 (function() {
     'use strict';
 
+    // =====================================================
+    // SECURITY NOTICE
+    // =====================================================
+    // This widget uses the Supabase ANON KEY, which is PUBLIC and client-exposed.
+    // CRITICAL: Ensure that Row Level Security (RLS) policies are CORRECTLY configured
+    // in your Supabase database to prevent unauthorized data access or manipulation.
+    // 
+    // The security of this widget relies on:
+    // 1. RLS policies on tables (rooms, messages, visitors, widgets)
+    // 2. Rate limiting (implemented client-side and server-side)
+    // 3. Input sanitization (implemented below)
+    // 4. CORS configuration on API routes
+    // 5. Magic bytes validation for file uploads
+    // =====================================================
+
     // Detectar a origem da API baseado em onde o script foi carregado
     let API_BASE = window.CHAT_WIDGET_API_BASE || window.ChatWidgetConfig?.apiBase || '';
     
@@ -55,12 +70,500 @@
 
     console.log('ChatWidget: Script loaded');
 
+    // =====================================================
+    // INJECT CSS STYLES (Improved maintainability)
+    // =====================================================
+    function injectStyles(brandColor, position) {
+        const styleId = 'chat-widget-styles';
+        
+        // Remove existing styles if already injected
+        const existingStyles = document.getElementById(styleId);
+        if (existingStyles) {
+            existingStyles.remove();
+        }
+
+        const styles = `
+            @keyframes chat-widget-slide-in {
+                from { opacity: 0; transform: translateY(-10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
+            @keyframes chat-widget-slide-out {
+                from { opacity: 1; transform: translateY(0); }
+                to { opacity: 0; transform: translateY(-10px); }
+            }
+            
+            @keyframes chat-widget-pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+
+            /* Button */
+            #chat-widget-button {
+                position: fixed;
+                ${position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
+                bottom: 24px;
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                background: ${brandColor};
+                color: white;
+                border: none;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                align-items: center;
+                justify-content: center;
+                z-index: 999999;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+            
+            #chat-widget-button:hover {
+                transform: scale(1.05);
+                box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+            }
+
+            /* Window */
+            #chat-widget-window {
+                position: fixed;
+                ${position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
+                bottom: 24px;
+                width: 400px;
+                max-width: calc(100vw - 48px);
+                height: 600px;
+                max-height: calc(100vh - 48px);
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+                flex-direction: column;
+                z-index: 999999;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+                overflow: hidden;
+            }
+
+            /* Header */
+            .chat-widget-header {
+                background: white;
+                padding: 20px 24px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                border-bottom: 1px solid #F3F4F6;
+                flex-shrink: 0;
+            }
+
+            .chat-widget-header h3 {
+                margin: 0;
+                font-size: 18px;
+                font-weight: 600;
+                color: #111827;
+            }
+
+            .chat-widget-close-btn {
+                background: none;
+                border: none;
+                color: #6B7280;
+                cursor: pointer;
+                font-size: 20px;
+                padding: 4px;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+            }
+
+            .chat-widget-close-btn:hover {
+                background: #F3F4F6;
+            }
+
+            /* Welcome Form */
+            #chat-widget-welcome-form {
+                flex: 1;
+                flex-direction: column;
+                padding: 32px 24px;
+                background: #FAFAFA;
+                overflow-y: auto;
+            }
+
+            .chat-widget-welcome-icon {
+                width: 64px;
+                height: 64px;
+                background: ${brandColor};
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 16px;
+            }
+
+            .chat-widget-form-group {
+                margin-bottom: 16px;
+            }
+
+            .chat-widget-form-label {
+                display: block;
+                font-size: 13px;
+                font-weight: 500;
+                color: #374151;
+                margin-bottom: 6px;
+            }
+
+            .chat-widget-form-input {
+                width: 100%;
+                padding: 12px 14px;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                font-size: 14px;
+                outline: none;
+                box-sizing: border-box;
+            }
+
+            .chat-widget-form-input:focus {
+                border-color: ${brandColor};
+            }
+
+            .chat-widget-submit-btn {
+                background: ${brandColor};
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 600;
+                cursor: pointer;
+                margin-top: 8px;
+                width: 100%;
+            }
+
+            .chat-widget-submit-btn:hover {
+                opacity: 0.9;
+            }
+
+            /* Chat Container */
+            #chat-widget-chat-container {
+                flex: 1;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            #chat-widget-messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 24px;
+                background: white;
+            }
+
+            /* Input Area */
+            .chat-widget-input-area {
+                padding: 16px 20px;
+                border-top: 1px solid #F3F4F6;
+                background: white;
+            }
+
+            #chat-widget-closed-notice {
+                background: #FEE2E2;
+                border: 1px solid #FECACA;
+                color: #991B1B;
+                padding: 10px;
+                border-radius: 8px;
+                margin-bottom: 12px;
+                text-align: center;
+                font-size: 12px;
+            }
+
+            #chat-widget-image-preview {
+                margin-bottom: 12px;
+            }
+
+            .chat-widget-preview-img {
+                max-width: 150px;
+                max-height: 100px;
+                border-radius: 8px;
+                border: 2px solid #E5E7EB;
+            }
+
+            .chat-widget-remove-image-btn {
+                position: absolute;
+                top: -6px;
+                right: -6px;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #EF4444;
+                color: white;
+                border: none;
+                cursor: pointer;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .chat-widget-input-row {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            #chat-widget-input {
+                flex: 1;
+                padding: 12px 14px;
+                border: 1px solid #E5E7EB;
+                border-radius: 24px;
+                font-size: 14px;
+                outline: none;
+                background: #F9FAFB;
+            }
+
+            #chat-widget-input:focus {
+                border-color: ${brandColor};
+                background: white;
+            }
+
+            .chat-widget-attach-btn {
+                background: none;
+                border: none;
+                cursor: pointer;
+                padding: 8px;
+                color: #9CA3AF;
+                flex-shrink: 0;
+            }
+
+            #chat-widget-send {
+                background: ${brandColor};
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+
+            /* Message Styles */
+            .chat-message-wrapper {
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 24px;
+            }
+
+            .chat-message-wrapper.visitor {
+                align-items: flex-end;
+            }
+
+            .chat-message-wrapper.agent {
+                align-items: flex-start;
+            }
+
+            .chat-message-row {
+                display: flex;
+                gap: 12px;
+                align-items: flex-end;
+                max-width: 75%;
+            }
+
+            .chat-message-row.visitor {
+                flex-direction: row-reverse;
+            }
+
+            .chat-message-avatar {
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                font-weight: 600;
+                flex-shrink: 0;
+            }
+
+            .chat-message-avatar.visitor {
+                background: #E5E7EB;
+                color: #374151;
+            }
+
+            .chat-message-avatar.agent {
+                background: ${brandColor};
+                color: white;
+            }
+
+            .chat-message-bubble {
+                padding: 12px 16px;
+                border-radius: 18px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+            }
+
+            .chat-message-bubble.visitor {
+                background: ${brandColor};
+                color: white;
+                border-bottom-right-radius: 4px;
+            }
+
+            .chat-message-bubble.agent {
+                background: #F3F4F6;
+                color: #111827;
+                border-bottom-left-radius: 4px;
+            }
+
+            .chat-message-content {
+                margin: 0;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+
+            .chat-message-image {
+                max-width: 200px;
+                max-height: 200px;
+                border-radius: 8px;
+                margin-top: 8px;
+                cursor: pointer;
+                display: block;
+            }
+
+            .chat-message-meta {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 4px;
+                font-size: 12px;
+                font-weight: 600;
+                color: #111827;
+            }
+
+            .chat-message-meta.visitor {
+                margin-right: 44px;
+            }
+
+            .chat-message-meta.agent {
+                margin-left: 44px;
+            }
+
+            /* System message */
+            .chat-system-message {
+                display: flex;
+                justify-content: center;
+                margin: 16px 0;
+            }
+
+            .chat-system-bubble {
+                background: #F3F4F6;
+                color: #6B7280;
+                padding: 8px 16px;
+                border-radius: 12px;
+                font-size: 12px;
+                text-align: center;
+                max-width: 80%;
+            }
+
+            /* Badge */
+            #chat-widget-badge {
+                position: absolute;
+                top: -4px;
+                right: -4px;
+                width: 12px;
+                height: 12px;
+                background: #EF4444;
+                border-radius: 50%;
+                border: 2px solid white;
+                animation: chat-widget-pulse 2s infinite;
+            }
+
+            /* Error notification */
+            .chat-widget-error {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #FEE2E2;
+                border: 2px solid #EF4444;
+                color: #991B1B;
+                padding: 16px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 9999999;
+                max-width: 300px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                font-size: 14px;
+                line-height: 1.5;
+                animation: chat-widget-slide-in 0.3s ease-out;
+            }
+
+            .chat-widget-error.fade-out {
+                animation: chat-widget-slide-out 0.3s ease-out;
+            }
+        `;
+
+        const styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        styleElement.textContent = styles;
+        document.head.appendChild(styleElement);
+
+        console.log('ChatWidget: Styles injected');
+    }
+
+    // =====================================================
+    // IMPROVED INPUT SANITIZATION
+    // =====================================================
+    // More comprehensive sanitization to prevent XSS attacks
+    // For production, consider using a library like DOMPurify for HTML content
+    // =====================================================
+    function sanitizeInput(input) {
+        if (typeof input !== 'string') return '';
+        
+        // Remove all HTML tags
+        let sanitized = input.replace(/<[^>]*>/g, '');
+        
+        // Remove dangerous protocols and event handlers
+        const dangerousPatterns = [
+            /javascript:/gi,
+            /data:text\/html/gi,
+            /vbscript:/gi,
+            /on\w+\s*=/gi,
+            /<script/gi,
+            /<\/script>/gi,
+            /<iframe/gi,
+            /<object/gi,
+            /<embed/gi,
+            /<link/gi,
+            /<style/gi,
+            /<meta/gi,
+            /expression\s*\(/gi,
+            /import\s+/gi,
+            /&#/g,  // HTML entities
+            /\0/g,  // Null bytes
+        ];
+
+        dangerousPatterns.forEach(pattern => {
+            sanitized = sanitized.replace(pattern, '');
+        });
+
+        // Remove invisible/control characters (except common whitespace)
+        sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+        
+        // Limit length (prevent DoS)
+        const maxLength = 5000;
+        if (sanitized.length > maxLength) {
+            sanitized = sanitized.substring(0, maxLength);
+        }
+        
+        return sanitized.trim();
+    }
+
     function initWidget(widgetConfig, supabaseConfig) {
         console.log('ChatWidget: Initializing...', { widgetConfig, supabaseConfig });
 
         widgetData = widgetConfig;
 
+        // Inject CSS styles
+        injectStyles(widgetData.brand_color, widgetData.position);
+
         // Initialize Supabase client
+        // SECURITY: This uses the PUBLIC anon key. RLS policies MUST be configured!
         supabaseClient = supabase.createClient(
             supabaseConfig.url,
             supabaseConfig.key || supabaseConfig.anonKey
@@ -180,53 +683,15 @@
     function showError(message) {
         // Criar notificação de erro elegante
         const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #FEE2E2;
-            border: 2px solid #EF4444;
-            color: #991B1B;
-            padding: 16px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 9999999;
-            max-width: 300px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            font-size: 14px;
-            line-height: 1.5;
-            animation: slideIn 0.3s ease-out;
-        `;
+        errorDiv.className = 'chat-widget-error';
         errorDiv.textContent = message;
         document.body.appendChild(errorDiv);
         
         // Remover após 5 segundos
         setTimeout(() => {
-            errorDiv.style.animation = 'slideOut 0.3s ease-out';
+            errorDiv.classList.add('fade-out');
             setTimeout(() => errorDiv.remove(), 300);
         }, 5000);
-    }
-
-    function sanitizeInput(input) {
-        if (typeof input !== 'string') return '';
-        
-        // Remover tags HTML
-        let sanitized = input.replace(/<[^>]*>/g, '');
-        
-        // Remover caracteres perigosos
-        sanitized = sanitized
-            .replace(/javascript:/gi, '')
-            .replace(/on\w+\s*=/gi, '')
-            .replace(/<script/gi, '')
-            .replace(/<\/script>/gi, '');
-        
-        // Limitar tamanho
-        const maxLength = 5000;
-        if (sanitized.length > maxLength) {
-            sanitized = sanitized.substring(0, maxLength);
-        }
-        
-        return sanitized.trim();
     }
 
     function checkRateLimit() {
@@ -549,24 +1014,12 @@
         // System message
         if (message.message_type === 'system') {
             const systemDiv = document.createElement('div');
-            systemDiv.style.cssText = `
-                display: flex;
-                justify-content: center;
-                margin: 16px 0;
-            `;
+            systemDiv.className = 'chat-system-message';
             
             const systemBubble = document.createElement('div');
-            systemBubble.style.cssText = `
-                background: #F3F4F6;
-                color: #6B7280;
-                padding: 8px 16px;
-                border-radius: 12px;
-                font-size: 12px;
-                text-align: center;
-                max-width: 80%;
-            `;
-            
+            systemBubble.className = 'chat-system-bubble';
             systemBubble.textContent = message.content;
+            
             systemDiv.appendChild(systemBubble);
             messagesContainer.appendChild(systemDiv);
             return;
@@ -575,76 +1028,33 @@
         const isVisitor = message.sender_type === 'visitor';
         
         const messageWrapper = document.createElement('div');
-        messageWrapper.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            align-items: ${isVisitor ? 'flex-end' : 'flex-start'};
-            margin-bottom: 24px;
-        `;
+        messageWrapper.className = `chat-message-wrapper ${isVisitor ? 'visitor' : 'agent'}`;
 
         const messageRow = document.createElement('div');
-        messageRow.style.cssText = `
-            display: flex;
-            gap: 12px;
-            align-items: flex-end;
-            max-width: 75%;
-            ${isVisitor ? 'flex-direction: row-reverse;' : ''}
-        `;
+        messageRow.className = `chat-message-row ${isVisitor ? 'visitor' : 'agent'}`;
 
         // Avatar
         const avatar = document.createElement('div');
-        avatar.style.cssText = `
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: ${isVisitor ? '#E5E7EB' : widgetData.brand_color};
-            color: ${isVisitor ? '#374151' : 'white'};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
-            flex-shrink: 0;
-        `;
+        avatar.className = `chat-message-avatar ${isVisitor ? 'visitor' : 'agent'}`;
         avatar.textContent = (message.sender_name || 'V').charAt(0).toUpperCase();
 
         // Message bubble
         const bubble = document.createElement('div');
-        bubble.style.cssText = `
-            padding: 12px 16px;
-            border-radius: 18px;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            ${isVisitor ? `
-                background: ${widgetData.brand_color};
-                color: white;
-                border-bottom-right-radius: 4px;
-            ` : `
-                background: #F3F4F6;
-                color: #111827;
-                border-bottom-left-radius: 4px;
-            `}
-        `;
+        bubble.className = `chat-message-bubble ${isVisitor ? 'visitor' : 'agent'}`;
 
         if (message.content) {
             const content = document.createElement('p');
+            content.className = 'chat-message-content';
             content.textContent = message.content;
-            content.style.cssText = 'margin: 0; font-size: 14px; line-height: 1.5;';
             bubble.appendChild(content);
         }
 
         if (message.image_url) {
             const img = document.createElement('img');
+            img.className = 'chat-message-image';
             img.src = message.image_url;
             img.alt = message.image_name || 'Image';
-            img.style.cssText = `
-                max-width: 200px;
-                max-height: 200px;
-                border-radius: 8px;
-                margin-top: ${message.content ? '8px' : '0'};
-                cursor: pointer;
-                display: block;
-            `;
+            if (message.content) img.style.marginTop = '8px';
             img.onclick = () => window.open(message.image_url, '_blank');
             bubble.appendChild(img);
         }
@@ -653,27 +1063,15 @@
         messageRow.appendChild(bubble);
         messageWrapper.appendChild(messageRow);
 
-        // Name and time
+        // Name
         const metaInfo = document.createElement('div');
-        metaInfo.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 4px;
-            ${isVisitor ? 'margin-right: 44px;' : 'margin-left: 44px;'}
-        `;
+        metaInfo.className = `chat-message-meta ${isVisitor ? 'visitor' : 'agent'}`;
 
         const nameSpan = document.createElement('span');
         nameSpan.textContent = message.sender_name || 'Visitor';
-        nameSpan.style.cssText = `
-            font-size: 12px;
-            font-weight: 600;
-            color: #111827;
-        `;
-
         metaInfo.appendChild(nameSpan);
+        
         messageWrapper.appendChild(metaInfo);
-
         messagesContainer.appendChild(messageWrapper);
     }
 
@@ -744,16 +1142,6 @@
         if (!badge) {
             badge = document.createElement('div');
             badge.id = 'chat-widget-badge';
-            badge.style.cssText = `
-                position: absolute;
-                top: -4px;
-                right: -4px;
-                width: 12px;
-                height: 12px;
-                background: #EF4444;
-                border-radius: 50%;
-                border: 2px solid white;
-            `;
             button.appendChild(badge);
         }
     }
@@ -768,279 +1156,75 @@
         container.id = 'chat-widget-container';
         container.innerHTML = `
             <!-- Chat Button -->
-            <button id="chat-widget-button" style="
-                position: fixed;
-                ${widgetData.position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
-                bottom: 24px;
-                width: 56px;
-                height: 56px;
-                border-radius: 50%;
-                background: ${widgetData.brand_color};
-                color: white;
-                border: none;
-                cursor: pointer;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                display: ${isOpen ? 'none' : 'flex'};
-                align-items: center;
-                justify-content: center;
-                z-index: 999999;
-                transition: transform 0.2s, box-shadow 0.2s;
-            " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.2)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'">
+            <button id="chat-widget-button" style="display: ${isOpen ? 'none' : 'flex'};">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                 </svg>
             </button>
 
             <!-- Chat Window -->
-            <div id="chat-widget-window" style="
-                position: fixed;
-                ${widgetData.position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
-                bottom: 24px;
-                width: 400px;
-                max-width: calc(100vw - 48px);
-                height: 600px;
-                max-height: calc(100vh - 48px);
-                background: white;
-                border-radius: 16px;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-                display: ${isOpen ? 'flex' : 'none'};
-                flex-direction: column;
-                z-index: 999999;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-                overflow: hidden;
-            ">
+            <div id="chat-widget-window" style="display: ${isOpen ? 'flex' : 'none'};">
                 <!-- Header -->
-                <div style="
-                    background: white;
-                    padding: 20px 24px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    border-bottom: 1px solid #F3F4F6;
-                    flex-shrink: 0;
-                ">
-                    <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
-                        <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #111827;">${widgetData.company_name || 'Messages'}</h3>
-                    </div>
-                    <button id="chat-widget-close" style="
-                        background: none;
-                        border: none;
-                        color: #6B7280;
-                        cursor: pointer;
-                        font-size: 20px;
-                        padding: 4px;
-                        width: 32px;
-                        height: 32px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        border-radius: 6px;
-                    " onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='none'">×</button>
+                <div class="chat-widget-header">
+                    <h3>${widgetData.company_name || 'Messages'}</h3>
+                    <button id="chat-widget-close" class="chat-widget-close-btn">×</button>
                 </div>
 
                 <!-- Welcome Form -->
-                <div id="chat-widget-welcome-form" style="
-                    flex: 1;
-                    display: ${hasSubmittedInfo ? 'none' : 'flex'};
-                    flex-direction: column;
-                    padding: 32px 24px;
-                    background: #FAFAFA;
-                    overflow-y: auto;
-                ">
+                <div id="chat-widget-welcome-form" style="display: ${hasSubmittedInfo ? 'none' : 'flex'};">
                     <div style="text-align: center; margin-bottom: 24px;">
-                        <div style="
-                            width: 64px;
-                            height: 64px;
-                            background: ${widgetData.brand_color};
-                            border-radius: 50%;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            margin: 0 auto 16px;
-                        ">
+                        <div class="chat-widget-welcome-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                             </svg>
                         </div>
-                        <h3 style="margin: 0 0 8px 0; font-size: 20px; color: #111827; font-weight: 600;">
-                            Welcome!
-                        </h3>
-                        <p style="margin: 0; font-size: 14px; color: #6B7280;">
-                            Tell us a bit about yourself to get started
-                        </p>
+                        <h3 style="margin: 0 0 8px 0; font-size: 20px; color: #111827; font-weight: 600;">Welcome!</h3>
+                        <p style="margin: 0; font-size: 14px; color: #6B7280;">Tell us a bit about yourself to get started</p>
                     </div>
 
-                    <form id="chat-widget-visitor-form" style="display: flex; flex-direction: column; gap: 16px;">
-                        <div>
-                            <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">Name *</label>
-                            <input
-                                type="text"
-                                id="chat-widget-visitor-name"
-                                required
-                                placeholder="Your name"
-                                style="
-                                    width: 100%;
-                                    padding: 12px 14px;
-                                    border: 1px solid #E5E7EB;
-                                    border-radius: 8px;
-                                    font-size: 14px;
-                                    outline: none;
-                                    box-sizing: border-box;
-                                "
-                                onfocus="this.style.borderColor='${widgetData.brand_color}'"
-                                onblur="this.style.borderColor='#E5E7EB'"
-                            />
+                    <form id="chat-widget-visitor-form">
+                        <div class="chat-widget-form-group">
+                            <label class="chat-widget-form-label">Name *</label>
+                            <input type="text" id="chat-widget-visitor-name" class="chat-widget-form-input" required placeholder="Your name" />
                         </div>
 
-                        <div>
-                            <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">Email *</label>
-                            <input
-                                type="email"
-                                id="chat-widget-visitor-email"
-                                required
-                                placeholder="your@email.com"
-                                style="
-                                    width: 100%;
-                                    padding: 12px 14px;
-                                    border: 1px solid #E5E7EB;
-                                    border-radius: 8px;
-                                    font-size: 14px;
-                                    outline: none;
-                                    box-sizing: border-box;
-                                "
-                                onfocus="this.style.borderColor='${widgetData.brand_color}'"
-                                onblur="this.style.borderColor='#E5E7EB'"
-                            />
+                        <div class="chat-widget-form-group">
+                            <label class="chat-widget-form-label">Email *</label>
+                            <input type="email" id="chat-widget-visitor-email" class="chat-widget-form-input" required placeholder="your@email.com" />
                         </div>
 
-                        <button
-                            type="submit"
-                            style="
-                                background: ${widgetData.brand_color};
-                                color: white;
-                                border: none;
-                                padding: 12px 24px;
-                                border-radius: 8px;
-                                font-size: 15px;
-                                font-weight: 600;
-                                cursor: pointer;
-                                margin-top: 8px;
-                            "
-                            onmouseover="this.style.opacity='0.9'"
-                            onmouseout="this.style.opacity='1'"
-                        >
-                            Start Chat
-                        </button>
+                        <button type="submit" class="chat-widget-submit-btn">Start Chat</button>
                     </form>
                 </div>
 
                 <!-- Chat Container -->
-                <div id="chat-widget-chat-container" style="
-                    flex: 1;
-                    display: ${hasSubmittedInfo ? 'flex' : 'none'};
-                    flex-direction: column;
-                    overflow: hidden;
-                ">
-                    <div id="chat-widget-messages" style="
-                        flex: 1;
-                        overflow-y: auto;
-                        padding: 24px;
-                        background: white;
-                    "></div>
+                <div id="chat-widget-chat-container" style="display: ${hasSubmittedInfo ? 'flex' : 'none'};">
+                    <div id="chat-widget-messages"></div>
 
                     <!-- Input Area -->
-                    <div style="
-                        padding: 16px 20px;
-                        border-top: 1px solid #F3F4F6;
-                        background: white;
-                    ">
-                        <div id="chat-widget-closed-notice" style="
-                            display: none;
-                            background: #FEE2E2;
-                            border: 1px solid #FECACA;
-                            color: #991B1B;
-                            padding: 10px;
-                            border-radius: 8px;
-                            margin-bottom: 12px;
-                            text-align: center;
-                            font-size: 12px;
-                        ">
+                    <div class="chat-widget-input-area">
+                        <div id="chat-widget-closed-notice" style="display: none;">
                             🔒 This conversation has been closed
                         </div>
 
-                        <div id="chat-widget-image-preview" style="display: none; margin-bottom: 12px;">
+                        <div id="chat-widget-image-preview" style="display: none;">
                             <div style="position: relative; display: inline-block;">
-                                <img id="chat-widget-preview-img" style="max-width: 150px; max-height: 100px; border-radius: 8px; border: 2px solid #E5E7EB;" />
-                                <button id="chat-widget-remove-image" style="
-                                    position: absolute;
-                                    top: -6px;
-                                    right: -6px;
-                                    width: 20px;
-                                    height: 20px;
-                                    border-radius: 50%;
-                                    background: #EF4444;
-                                    color: white;
-                                    border: none;
-                                    cursor: pointer;
-                                    font-size: 14px;
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                ">×</button>
+                                <img id="chat-widget-preview-img" class="chat-widget-preview-img" />
+                                <button id="chat-widget-remove-image" class="chat-widget-remove-image-btn">×</button>
                             </div>
                         </div>
 
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <!-- Avatar -->
-                           
-
-                            <!-- Input -->
-                            <input
-                                type="text"
-                                id="chat-widget-input"
-                                placeholder="Enter text here..."
-                                style="
-                                    flex: 1;
-                                    padding: 12px 14px;
-                                    border: 1px solid #E5E7EB;
-                                    border-radius: 24px;
-                                    font-size: 14px;
-                                    outline: none;
-                                    background: #F9FAFB;
-                                "
-                                onfocus="this.style.borderColor='${widgetData.brand_color}'; this.style.background='white'"
-                                onblur="this.style.borderColor='#E5E7EB'; this.style.background='#F9FAFB'"
-                            />
-
-                            <!-- Attach Button -->
+                        <div class="chat-widget-input-row">
+                            <input type="text" id="chat-widget-input" placeholder="Enter text here..." />
+                            
                             <input id="chat-widget-file-input" type="file" accept="image/*" style="display: none;" />
-                            <button id="chat-widget-attach-btn-2" style="
-                                background: none;
-                                border: none;
-                                cursor: pointer;
-                                padding: 8px;
-                                color: #9CA3AF;
-                                flex-shrink: 0;
-                            ">
+                            <button id="chat-widget-attach-btn-2" class="chat-widget-attach-btn">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
                                 </svg>
                             </button>
 
-                            <!-- Send Button -->
-                            <button id="chat-widget-send" style="
-                                background: ${widgetData.brand_color};
-                                color: white;
-                                border: none;
-                                border-radius: 50%;
-                                width: 40px;
-                                height: 40px;
-                                cursor: pointer;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                                flex-shrink: 0;
-                            ">
+                            <button id="chat-widget-send">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="22" y1="2" x2="11" y2="13"></line>
                                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
