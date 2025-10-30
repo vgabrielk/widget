@@ -127,21 +127,6 @@ export default function WidgetSettingsPage() {
     }
   }, [widgetId, supabase, name, brandColor, position, welcomeMessage, companyName, isActive, domains]);
 
-  const copyEmbedCode = useCallback(() => {
-    if (!widget) return;
-    const embedCode = `<!-- ChatWidget -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-  window.ChatWidgetConfig = {
-    publicKey: '${widget.public_key}',
-  };
-</script>
-<script src="${window.location.origin}/widget.js"></script>`;
-    navigator.clipboard.writeText(embedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [widget]);
-
   const embedCode = widget ? `<!-- ChatWidget -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -150,6 +135,12 @@ export default function WidgetSettingsPage() {
   };
 </script>
 <script src="${window.location.origin}/widget.js"></script>` : '';
+
+  const copyEmbedCode = useCallback(() => {
+    navigator.clipboard.writeText(embedCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [embedCode]);
 
   if (!widget) {
     return (
