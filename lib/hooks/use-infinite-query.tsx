@@ -113,31 +113,41 @@ function createStore<TData extends SupabaseTableData<T>, T extends SupabaseTable
   }
 
   const fetchPage = async (skip: number) => {
-    if (state.hasInitialFetch && (state.isFetching || state.count <= state.data.length)) return
+    // Only check isFetching to prevent concurrent requests
+    if (state.isFetching) return
+    
+    // If we already have all data, don't fetch more
+    if (state.hasInitialFetch && state.count > 0 && state.count <= state.data.length) return
 
     setState({ isFetching: true })
 
-    let query = supabase
-      .from(tableName)
-      .select(columns, { count: 'exact' }) as unknown as SupabaseSelectBuilder<T>
+    try {
+      let query = supabase
+        .from(tableName)
+        .select(columns, { count: 'exact' }) as unknown as SupabaseSelectBuilder<T>
 
-    if (trailingQuery) {
-      query = trailingQuery(query)
-    }
-    const { data: newData, count, error } = await query.range(skip, skip + pageSize - 1)
+      if (trailingQuery) {
+        query = trailingQuery(query)
+      }
+      const { data: newData, count, error } = await query.range(skip, skip + pageSize - 1)
 
-    if (error) {
-      console.error('Query error:', error)
-      setState({ error })
-    } else {
-      setState({
-        data: [...state.data, ...(newData as TData[])],
-        count: count || 0,
-        isSuccess: true,
-        error: null,
-      })
+      if (error) {
+        console.error('Query error:', error)
+        setState({ error })
+      } else {
+        setState({
+          data: [...state.data, ...(newData as TData[])],
+          count: count || 0,
+          isSuccess: true,
+          error: null,
+        })
+      }
+    } catch (err) {
+      console.error('Fetch page error:', err)
+      setState({ error: err as Error })
+    } finally {
+      setState({ isFetching: false })
     }
-    setState({ isFetching: false })
   }
 
   const fetchNextPage = async () => {
@@ -146,23 +156,36 @@ function createStore<TData extends SupabaseTableData<T>, T extends SupabaseTable
   }
 
   const initialize = async () => {
-    setState({ isLoading: true, isSuccess: false, data: [] })
-    await fetchNextPage()
-    setState({ isLoading: false, hasInitialFetch: true })
+    try {
+      setState({ isLoading: true, isSuccess: false, data: [] })
+      await fetchNextPage()
+    } catch (err) {
+      console.error('Initialize error:', err)
+      setState({ error: err as Error })
+    } finally {
+      // CRITICAL: Always set hasInitialFetch to true to prevent infinite loops
+      setState({ isLoading: false, hasInitialFetch: true })
+    }
   }
   
   const reset = async () => {
-    setState({ 
-      isLoading: true, 
-      isSuccess: false, 
-      data: [], 
-      count: 0,
-      error: null,
-      hasInitialFetch: false,
-      isFetching: false
-    })
-    await fetchNextPage()
-    setState({ isLoading: false, hasInitialFetch: true })
+    try {
+      setState({ 
+        isLoading: true, 
+        isSuccess: false, 
+        data: [], 
+        count: 0,
+        error: null,
+        hasInitialFetch: false,
+        isFetching: false
+      })
+      await fetchNextPage()
+    } catch (err) {
+      console.error('Reset error:', err)
+      setState({ error: err as Error })
+    } finally {
+      setState({ isLoading: false, hasInitialFetch: true })
+    }
   }
 
   return {
@@ -212,11 +235,13 @@ function useInfiniteQuery<
   )
   
   // Initialize store after mounting or when queryKey changes
+  // CRITICAL: Don't include state.hasInitialFetch in deps to prevent infinite loops
   useEffect(() => {
-    if (!state.hasInitialFetch && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       storeRef.current.initialize()
     }
-  }, [tableName, columns, pageSize, queryKey, state.hasInitialFetch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableName, columns, pageSize, queryKey])
 
   return {
     data: state.data,
