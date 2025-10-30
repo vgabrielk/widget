@@ -22,7 +22,7 @@ import {
   Loader2,
   ArrowLeft
 } from 'lucide-react';
-import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query';
+import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query-simple';
 import { useUser } from '@/lib/contexts/user-context';
 
 export default function InboxPage() {
