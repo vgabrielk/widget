@@ -1067,6 +1067,9 @@ export default function InboxPage() {
                       className={`flex gap-2 sm:gap-3 ${isAgent ? 'flex-row-reverse' : ''}`}
                     >
                       <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                        {message.sender_avatar && (
+                          <AvatarImage src={message.sender_avatar} alt={message.sender_name || 'User'} />
+                        )}
                         <AvatarFallback className={`${isAgent ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-xs`}>
                           {getInitials(message.sender_name)}
                         </AvatarFallback>
