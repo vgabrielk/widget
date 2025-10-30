@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { UserProvider } from '@/lib/contexts/user-context';
 
 export default async function SaaSLayout({
   children,
@@ -16,6 +17,6 @@ export default async function SaaSLayout({
     redirect('/auth/login');
   }
 
-  return <>{children}</>;
+  return <UserProvider>{children}</UserProvider>;
 }
 
