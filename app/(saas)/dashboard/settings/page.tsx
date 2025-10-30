@@ -143,7 +143,7 @@ export default function SettingsPage() {
       title="Configurações"
       description="Gerencie suas preferências e informações da conta"
     >
-      <div className="max-w-5xl space-y-6">
+      <div className="w-full space-y-6">
         {/* Success/Error Messages */}
         {saved && (
           <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30">
@@ -463,23 +463,24 @@ export default function SettingsPage() {
         {/* Save Button */}
         <Card className="card-clean border-primary/20 bg-primary/5">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
                   <Save className="h-5 w-5 text-primary" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold">Salvar Alterações</p>
                   <p className="text-sm text-muted-foreground">
                     Suas configurações serão aplicadas imediatamente
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
                 <Button
                   variant="outline"
                   onClick={() => loadUserData()}
                   disabled={saving}
+                  className="flex-1 sm:flex-none"
                 >
                   Cancelar
                 </Button>
@@ -487,7 +488,7 @@ export default function SettingsPage() {
                   onClick={handleSave}
                   disabled={saving}
                   size="lg"
-                  className="min-w-[180px]"
+                  className="flex-1 sm:flex-none sm:min-w-[180px]"
                 >
                   {saving ? (
                     <>
