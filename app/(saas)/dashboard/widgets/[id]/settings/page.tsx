@@ -130,6 +130,7 @@ export default function WidgetSettingsPage() {
   const copyEmbedCode = useCallback(() => {
     if (!widget) return;
     const embedCode = `<!-- ChatWidget -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   window.ChatWidgetConfig = {
     publicKey: '${widget.public_key}',
@@ -142,6 +143,7 @@ export default function WidgetSettingsPage() {
   }, [widget]);
 
   const embedCode = widget ? `<!-- ChatWidget -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   window.ChatWidgetConfig = {
     publicKey: '${widget.public_key}',
