@@ -607,7 +607,7 @@
 
         // Check for existing active room before creating UI
         checkForActiveRoom().then(() => {
-            createWidgetUI();
+        createWidgetUI();
             addEventListeners();
             
             // Auto-open if was open
@@ -654,13 +654,21 @@
                 .eq('visitor_id', visitorId)
                 .single();
 
-            if (existingRoom && existingRoom.status === 'open') {
-                console.log('ChatWidget: Found existing active room:', existingRoom.id);
-                hasActiveRoom = true;
+            if (existingRoom) {
+                console.log('ChatWidget: Found existing room:', existingRoom.id, 'Status:', existingRoom.status);
+                
+                // Atualizar status da sala (pode estar 'open' ou 'closed')
                 roomId = existingRoom.id;
                 roomStatus = existingRoom.status;
                 hasSubmittedInfo = true;
                 localStorage.setItem(STORAGE_KEYS.HAS_SUBMITTED, 'true');
+                
+                // Se a sala está aberta, considerar como ativa
+                if (existingRoom.status === 'open') {
+                    hasActiveRoom = true;
+                } else {
+                    console.log('ChatWidget: Room is closed, visitor will see closed notice');
+                }
                 
                 if (existingRoom.visitor_name) {
                     visitorInfo.name = existingRoom.visitor_name;
@@ -671,8 +679,9 @@
                     localStorage.setItem(STORAGE_KEYS.VISITOR_EMAIL, existingRoom.visitor_email);
                 }
             } else {
-                console.log('ChatWidget: No active room found or room is closed');
+                console.log('ChatWidget: No room found');
                 roomId = null;
+                roomStatus = null;
                 localStorage.removeItem(STORAGE_KEYS.ROOM_ID);
             }
         } catch (error) {
@@ -718,7 +727,7 @@
         return { allowed: true };
     }
 
-    async function initializeRoom() {
+        async function initializeRoom() {
         console.log('ChatWidget: Initializing room...', {
             widgetId: widgetData?.id,
             visitorId,
@@ -726,155 +735,158 @@
             visitorEmail: visitorInfo.email
         });
 
-        try {
-            // Try to find existing OPEN room
-            const { data: existingRooms } = await supabaseClient
-                .from('rooms')
-                .select('*')
-                .eq('widget_id', widgetData.id)
-                .eq('visitor_id', visitorId)
-                .eq('status', 'open')
-                .order('created_at', { ascending: false })
-                .limit(1);
+            try {
+                // Try to find existing OPEN room
+                const { data: existingRooms } = await supabaseClient
+                    .from('rooms')
+                    .select('*')
+                    .eq('widget_id', widgetData.id)
+                    .eq('visitor_id', visitorId)
+                    .eq('status', 'open')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
 
             console.log('ChatWidget: Existing rooms query result:', existingRooms);
 
-            // If found open room, use it
-            if (existingRooms && existingRooms.length > 0) {
-                const existingRoom = existingRooms[0];
-                roomId = existingRoom.id;
-                roomStatus = existingRoom.status;
+                // If found open room, use it
+                if (existingRooms && existingRooms.length > 0) {
+                    const existingRoom = existingRooms[0];
+                    roomId = existingRoom.id;
+                    roomStatus = existingRoom.status;
                 localStorage.setItem(STORAGE_KEYS.ROOM_ID, roomId);
-                
+                    
                 console.log('ChatWidget: Found existing open room:', roomId);
-                
-                // Update room with visitor info if available and different
-                if (visitorInfo.name && visitorInfo.email) {
-                    const needsUpdate = 
-                        existingRoom.visitor_name !== visitorInfo.name ||
-                        existingRoom.visitor_email !== visitorInfo.email;
-                        
-                    if (needsUpdate) {
-                        console.log('ChatWidget: Updating room with visitor info');
-                        await supabaseClient
-                            .from('rooms')
-                            .update({
-                                visitor_name: visitorInfo.name,
-                                visitor_email: visitorInfo.email,
-                            })
-                            .eq('id', roomId);
+                    
+                    // Update room with visitor info if available and different
+                    if (visitorInfo.name && visitorInfo.email) {
+                        const needsUpdate = 
+                            existingRoom.visitor_name !== visitorInfo.name ||
+                            existingRoom.visitor_email !== visitorInfo.email;
+                            
+                        if (needsUpdate) {
+                            console.log('ChatWidget: Updating room with visitor info');
+                            await supabaseClient
+                                .from('rooms')
+                                .update({
+                                    visitor_name: visitorInfo.name,
+                                    visitor_email: visitorInfo.email,
+                                })
+                                .eq('id', roomId);
+                        }
                     }
+                    
+                    loadMessages();
+                    subscribeToRoomStatus();
+                    return;
                 }
-                
-                loadMessages();
-                subscribeToRoomStatus();
-                return;
-            }
 
-            // No open room found - create new room
-            console.log('ChatWidget: Creating new room...');
-            
-            const { data: newRoom, error } = await supabaseClient
-                .from('rooms')
-                .insert({
+                // No open room found - create new room
+                console.log('ChatWidget: Creating new room...');
+                
+                const { data: newRoom, error } = await supabaseClient
+                    .from('rooms')
+                    .insert({
                     widget_id: widgetData.id,
-                    visitor_id: visitorId,
+                        visitor_id: visitorId,
                     visitor_name: visitorInfo.name,
                     visitor_email: visitorInfo.email,
                     status: 'open',
-                    page_url: window.location.href,
-                    page_title: document.title,
-                })
-                .select()
-                .single();
+                        page_url: window.location.href,
+                        page_title: document.title,
+                    })
+                    .select()
+                    .single();
 
             if (error) throw error;
-
-            roomId = newRoom.id;
+                
+                roomId = newRoom.id;
             roomStatus = newRoom.status;
             localStorage.setItem(STORAGE_KEYS.ROOM_ID, roomId);
             
             console.log('ChatWidget: New room created:', roomId);
 
-            loadMessages();
-            subscribeToRoomStatus();
-        } catch (error) {
+                loadMessages();
+                subscribeToRoomStatus();
+            } catch (error) {
             console.error('ChatWidget: Error initializing room:', error);
             showError('Erro ao iniciar conversa. Por favor, tente novamente.');
+            }
         }
-    }
 
-    async function loadMessages() {
-        try {
+        async function loadMessages() {
+            try {
             const { data: messages, error } = await supabaseClient
-                .from('messages')
-                .select('*')
-                .eq('room_id', roomId)
-                .order('created_at', { ascending: true });
+                    .from('messages')
+                    .select('*')
+                    .eq('room_id', roomId)
+                    .order('created_at', { ascending: true });
 
-            if (error) throw error;
-
-            const messagesContainer = document.getElementById('chat-widget-messages');
-            if (messagesContainer) {
-                messagesContainer.innerHTML = '';
+                if (error) throw error;
+                
+                const messagesContainer = document.getElementById('chat-widget-messages');
+                if (messagesContainer) {
+                    messagesContainer.innerHTML = '';
                 messages.forEach(addMessageToUI);
-                scrollToBottom();
+                    scrollToBottom();
+                }
+                
+                subscribeToMessages();
+            
+            // Atualizar UI baseado no status atual da sala
+            updateClosedNotice();
+            } catch (error) {
+            console.error('ChatWidget: Error loading messages:', error);
+            }
+        }
+
+        function subscribeToMessages() {
+            if (messageChannel) {
+                supabaseClient.removeChannel(messageChannel);
             }
 
-            subscribeToMessages();
-        } catch (error) {
-            console.error('ChatWidget: Error loading messages:', error);
-        }
-    }
-
-    function subscribeToMessages() {
-        if (messageChannel) {
-            supabaseClient.removeChannel(messageChannel);
-        }
-
-        messageChannel = supabaseClient
-            .channel(`room:${roomId}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'messages',
-                filter: `room_id=eq.${roomId}`
-            }, payload => {
-                const message = payload.new;
-                addMessageToUI(message);
-                scrollToBottom();
-                
-                // Se widget está fechado e mensagem é do atendente
-                if (!isOpen && message.sender_type === 'agent') {
-                    playNotificationSound();
-                    showSystemNotification(message);
-                    showUnreadBadge();
-                }
-            })
-            .subscribe();
-        
-        console.log('ChatWidget: Subscribed to messages');
-    }
-
-    function subscribeToRoomStatus() {
-        if (roomStatusChannel) {
-            supabaseClient.removeChannel(roomStatusChannel);
+            messageChannel = supabaseClient
+                .channel(`room:${roomId}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `room_id=eq.${roomId}`
+                }, payload => {
+                    const message = payload.new;
+                    addMessageToUI(message);
+                    scrollToBottom();
+                    
+                    // Se widget está fechado e mensagem é do atendente
+                    if (!isOpen && message.sender_type === 'agent') {
+                        playNotificationSound();
+                        showSystemNotification(message);
+                        showUnreadBadge();
+                    }
+                })
+                .subscribe();
+            
+            console.log('ChatWidget: Subscribed to messages');
         }
 
-        roomStatusChannel = supabaseClient
-            .channel(`room-status:${roomId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'rooms',
-                filter: `id=eq.${roomId}`
-            }, payload => {
+        function subscribeToRoomStatus() {
+            if (roomStatusChannel) {
+                supabaseClient.removeChannel(roomStatusChannel);
+            }
+
+            roomStatusChannel = supabaseClient
+                .channel(`room-status:${roomId}`)
+                .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'rooms',
+                    filter: `id=eq.${roomId}`
+                }, payload => {
                 const room = payload.new;
                 roomStatus = room.status;
                 console.log('ChatWidget: Room status updated:', roomStatus);
                 updateClosedNotice();
-            })
-            .subscribe();
+                })
+                .subscribe();
     }
 
     function updateClosedNotice() {
@@ -884,15 +896,55 @@
         const attachBtn2 = document.getElementById('chat-widget-attach-btn-2');
 
         if (roomStatus === 'closed') {
+            console.log('ChatWidget: Room is closed, disabling inputs');
+            
+            // Mostrar aviso visual
             if (notice) notice.style.display = 'block';
-            if (input) input.disabled = true;
-            if (sendBtn) sendBtn.disabled = true;
-            if (attachBtn2) attachBtn2.disabled = true;
+            
+            // Desabilitar todos os inputs
+            if (input) {
+                input.disabled = true;
+                input.placeholder = 'Esta conversa foi encerrada';
+                input.style.background = '#F3F4F6';
+                input.style.cursor = 'not-allowed';
+            }
+            
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.5';
+                sendBtn.style.cursor = 'not-allowed';
+            }
+            
+            if (attachBtn2) {
+                attachBtn2.disabled = true;
+                attachBtn2.style.opacity = '0.5';
+                attachBtn2.style.cursor = 'not-allowed';
+            }
         } else {
+            console.log('ChatWidget: Room is open, enabling inputs');
+            
+            // Esconder aviso
             if (notice) notice.style.display = 'none';
-            if (input) input.disabled = false;
-            if (sendBtn) sendBtn.disabled = false;
-            if (attachBtn2) attachBtn2.disabled = false;
+            
+            // Reabilitar inputs
+            if (input) {
+                input.disabled = false;
+                input.placeholder = 'Enter text here...';
+                input.style.background = '#F9FAFB';
+                input.style.cursor = 'text';
+            }
+            
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = '1';
+                sendBtn.style.cursor = 'pointer';
+            }
+            
+            if (attachBtn2) {
+                attachBtn2.disabled = false;
+                attachBtn2.style.opacity = '1';
+                attachBtn2.style.cursor = 'pointer';
+            }
         }
     }
 
@@ -900,7 +952,15 @@
         const input = document.getElementById('chat-widget-input');
         const content = input?.value?.trim();
 
-        if ((!content && !selectedImage) || roomStatus === 'closed') return;
+        // Validar se não tem conteúdo
+        if (!content && !selectedImage) return;
+        
+        // Validar se conversa está fechada
+        if (roomStatus === 'closed') {
+            console.warn('ChatWidget: Attempt to send message in closed conversation');
+            showError('Esta conversa foi encerrada. Inicie uma nova conversa para continuar.');
+            return;
+        }
 
         // Verificar rate limiting
         const rateLimitCheck = checkRateLimit();
@@ -929,9 +989,9 @@
             // Upload image if selected
             if (selectedImage) {
                 console.log('ChatWidget: Uploading image...', selectedImage.name);
-                const formData = new FormData();
-                formData.append('file', selectedImage);
-                formData.append('roomId', roomId);
+                    const formData = new FormData();
+                    formData.append('file', selectedImage);
+                    formData.append('roomId', roomId);
 
                 // Timeout de 30 segundos para upload (pode demorar mais que requisições normais)
                 const controller = new AbortController();
@@ -991,42 +1051,42 @@
 
             if (error) throw error;
 
-            if (input) input.value = '';
+                if (input) input.value = '';
 
             // Clear selected image
-            if (selectedImage) {
-                selectedImage = null;
-                const preview = document.getElementById('chat-widget-image-preview');
-                const fileInput = document.getElementById('chat-widget-file-input');
-                if (preview) preview.style.display = 'none';
-                if (fileInput) fileInput.value = '';
-            }
-        } catch (error) {
-            console.error('ChatWidget: Error sending message', error);
+                if (selectedImage) {
+                    selectedImage = null;
+                    const preview = document.getElementById('chat-widget-image-preview');
+                    const fileInput = document.getElementById('chat-widget-file-input');
+                    if (preview) preview.style.display = 'none';
+                    if (fileInput) fileInput.value = '';
+                }
+            } catch (error) {
+                console.error('ChatWidget: Error sending message', error);
             showError(error.message || 'Erro ao enviar mensagem. Tente novamente.');
+            }
         }
-    }
 
-    function addMessageToUI(message) {
-        const messagesContainer = document.getElementById('chat-widget-messages');
-        if (!messagesContainer) return;
+        function addMessageToUI(message) {
+            const messagesContainer = document.getElementById('chat-widget-messages');
+            if (!messagesContainer) return;
 
         // System message
-        if (message.message_type === 'system') {
-            const systemDiv = document.createElement('div');
+            if (message.message_type === 'system') {
+                const systemDiv = document.createElement('div');
             systemDiv.className = 'chat-system-message';
-            
-            const systemBubble = document.createElement('div');
+                
+                const systemBubble = document.createElement('div');
             systemBubble.className = 'chat-system-bubble';
-            systemBubble.textContent = message.content;
+                systemBubble.textContent = message.content;
             
-            systemDiv.appendChild(systemBubble);
-            messagesContainer.appendChild(systemDiv);
-            return;
-        }
+                systemDiv.appendChild(systemBubble);
+                messagesContainer.appendChild(systemDiv);
+                return;
+            }
 
-        const isVisitor = message.sender_type === 'visitor';
-        
+            const isVisitor = message.sender_type === 'visitor';
+            
         const messageWrapper = document.createElement('div');
         messageWrapper.className = `chat-message-wrapper ${isVisitor ? 'visitor' : 'agent'}`;
 
@@ -1039,25 +1099,25 @@
         avatar.textContent = (message.sender_name || 'V').charAt(0).toUpperCase();
 
         // Message bubble
-        const bubble = document.createElement('div');
+            const bubble = document.createElement('div');
         bubble.className = `chat-message-bubble ${isVisitor ? 'visitor' : 'agent'}`;
 
-        if (message.content) {
-            const content = document.createElement('p');
+            if (message.content) {
+                const content = document.createElement('p');
             content.className = 'chat-message-content';
-            content.textContent = message.content;
-            bubble.appendChild(content);
-        }
+                content.textContent = message.content;
+                bubble.appendChild(content);
+            }
 
-        if (message.image_url) {
-            const img = document.createElement('img');
+            if (message.image_url) {
+                const img = document.createElement('img');
             img.className = 'chat-message-image';
-            img.src = message.image_url;
+                img.src = message.image_url;
             img.alt = message.image_name || 'Image';
             if (message.content) img.style.marginTop = '8px';
-            img.onclick = () => window.open(message.image_url, '_blank');
-            bubble.appendChild(img);
-        }
+                img.onclick = () => window.open(message.image_url, '_blank');
+                bubble.appendChild(img);
+            }
 
         messageRow.appendChild(avatar);
         messageRow.appendChild(bubble);
@@ -1073,39 +1133,39 @@
         
         messageWrapper.appendChild(metaInfo);
         messagesContainer.appendChild(messageWrapper);
-    }
-
-    function scrollToBottom() {
-        const messagesContainer = document.getElementById('chat-widget-messages');
-        if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-    }
 
-    function handleVisibilityChange() {
-        if (document.hidden) {
-            console.log('ChatWidget: Tab hidden, preserving state...');
-        } else {
-            console.log('ChatWidget: Tab visible, checking UI state...');
-            restoreWidgetState();
+        function scrollToBottom() {
+            const messagesContainer = document.getElementById('chat-widget-messages');
+            if (messagesContainer) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
         }
-    }
 
-    function restoreWidgetState() {
-        const chatWindow = document.getElementById('chat-widget-window');
-        const button = document.getElementById('chat-widget-button');
-        const chatContainer = document.getElementById('chat-widget-chat-container');
-        const welcomeForm = document.getElementById('chat-widget-welcome-form');
-        
-        if (isOpen && chatWindow) {
-            chatWindow.style.display = 'flex';
-            if (button) button.style.display = 'none';
-            
-            if (hasSubmittedInfo || hasActiveRoom) {
-                if (chatContainer) chatContainer.style.display = 'flex';
-                if (welcomeForm) welcomeForm.style.display = 'none';
+        function handleVisibilityChange() {
+            if (document.hidden) {
+                console.log('ChatWidget: Tab hidden, preserving state...');
             } else {
-                if (chatContainer) chatContainer.style.display = 'none';
+                console.log('ChatWidget: Tab visible, checking UI state...');
+                restoreWidgetState();
+            }
+        }
+
+        function restoreWidgetState() {
+            const chatWindow = document.getElementById('chat-widget-window');
+            const button = document.getElementById('chat-widget-button');
+            const chatContainer = document.getElementById('chat-widget-chat-container');
+            const welcomeForm = document.getElementById('chat-widget-welcome-form');
+            
+            if (isOpen && chatWindow) {
+                chatWindow.style.display = 'flex';
+                if (button) button.style.display = 'none';
+                
+                if (hasSubmittedInfo || hasActiveRoom) {
+                    if (chatContainer) chatContainer.style.display = 'flex';
+                    if (welcomeForm) welcomeForm.style.display = 'none';
+                } else {
+                    if (chatContainer) chatContainer.style.display = 'none';
                 if (welcomeForm) welcomeForm.style.display = 'flex';
             }
         }
@@ -1158,8 +1218,8 @@
             <!-- Chat Button -->
             <button id="chat-widget-button" style="display: ${isOpen ? 'none' : 'flex'};">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                </svg>
             </button>
 
             <!-- Chat Window -->
@@ -1168,34 +1228,34 @@
                 <div class="chat-widget-header">
                     <h3>${widgetData.company_name || 'Messages'}</h3>
                     <button id="chat-widget-close" class="chat-widget-close-btn">×</button>
-                </div>
+                    </div>
 
                 <!-- Welcome Form -->
                 <div id="chat-widget-welcome-form" style="display: ${hasSubmittedInfo ? 'none' : 'flex'};">
-                    <div style="text-align: center; margin-bottom: 24px;">
+                        <div style="text-align: center; margin-bottom: 24px;">
                         <div class="chat-widget-welcome-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                            </svg>
-                        </div>
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                </svg>
+                            </div>
                         <h3 style="margin: 0 0 8px 0; font-size: 20px; color: #111827; font-weight: 600;">Welcome!</h3>
                         <p style="margin: 0; font-size: 14px; color: #6B7280;">Tell us a bit about yourself to get started</p>
-                    </div>
+                        </div>
 
                     <form id="chat-widget-visitor-form">
                         <div class="chat-widget-form-group">
                             <label class="chat-widget-form-label">Name *</label>
                             <input type="text" id="chat-widget-visitor-name" class="chat-widget-form-input" required placeholder="Your name" />
-                        </div>
+                            </div>
 
                         <div class="chat-widget-form-group">
                             <label class="chat-widget-form-label">Email *</label>
                             <input type="email" id="chat-widget-visitor-email" class="chat-widget-form-input" required placeholder="your@email.com" />
-                        </div>
+                            </div>
 
                         <button type="submit" class="chat-widget-submit-btn">Start Chat</button>
-                    </form>
-                </div>
+                        </form>
+                    </div>
 
                 <!-- Chat Container -->
                 <div id="chat-widget-chat-container" style="display: ${hasSubmittedInfo ? 'flex' : 'none'};">
@@ -1232,19 +1292,19 @@
                             </button>
                         </div>
                     </div>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
 
         document.body.appendChild(container);
         console.log('ChatWidget: UI created and added to DOM');
     }
 
     function addEventListeners() {
-        const button = document.getElementById('chat-widget-button');
-        const closeBtn = document.getElementById('chat-widget-close');
+            const button = document.getElementById('chat-widget-button');
+            const closeBtn = document.getElementById('chat-widget-close');
         const sendBtn = document.getElementById('chat-widget-send');
-        const input = document.getElementById('chat-widget-input');
+            const input = document.getElementById('chat-widget-input');
         const form = document.getElementById('chat-widget-visitor-form');
         const attachBtn2 = document.getElementById('chat-widget-attach-btn-2');
         const fileInput = document.getElementById('chat-widget-file-input');
@@ -1276,16 +1336,16 @@
                 if (!emailRegex.test(email)) {
                     showError('Por favor, insira um email válido.');
                     emailInput.focus();
-                    return;
-                }
-                
+                        return;
+                    }
+
                 // Validação de nome (mínimo 2 caracteres)
                 if (name.length < 2) {
                     showError('Por favor, insira seu nome completo (mínimo 2 caracteres).');
                     nameInput.focus();
-                    return;
-                }
-                
+                        return;
+                    }
+
                 // Sanitização robusta
                 visitorInfo.name = sanitizeInput(name);
                 visitorInfo.email = sanitizeInput(email);
@@ -1318,21 +1378,21 @@
                     const previewImg = document.getElementById('chat-widget-preview-img');
                     
                     if (preview && previewImg) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
                             previewImg.src = e.target.result;
                             preview.style.display = 'block';
-                        };
-                        reader.readAsDataURL(file);
+                    };
+                    reader.readAsDataURL(file);
                     }
                 }
-            });
-        }
+                });
+            }
 
         const removeImageBtn = document.getElementById('chat-widget-remove-image');
-        if (removeImageBtn) {
-            removeImageBtn.addEventListener('click', () => {
-                selectedImage = null;
+            if (removeImageBtn) {
+                removeImageBtn.addEventListener('click', () => {
+                    selectedImage = null;
                 const preview = document.getElementById('chat-widget-image-preview');
                 if (preview) preview.style.display = 'none';
                 if (fileInput) fileInput.value = '';
