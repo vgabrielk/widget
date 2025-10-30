@@ -44,7 +44,9 @@ export default function InboxPage() {
   const [userEmail, setUserEmail] = useState<string>('');
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const currentRoomIdRef = useRef<string | null>(null); // Track current room to prevent race conditions
-  const supabase = createClient();
+  
+  // CRITICAL: Create supabase client only once with useMemo to prevent infinite loops
+  const supabase = useMemo(() => createClient(), []);
 
   // Use infinite query for rooms
   const { 
@@ -197,6 +199,7 @@ export default function InboxPage() {
       }
     };
     loadUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync rooms from query to liveRooms state
@@ -207,6 +210,7 @@ export default function InboxPage() {
   // Load widget
   useEffect(() => {
     loadWidget();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetId]);
 
   // Subscribe to rooms updates (realtime)
@@ -337,6 +341,7 @@ export default function InboxPage() {
       setInputValue(''); // Clear input when no room selected
       prevMessagesLengthRef.current = 0;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoom?.id]);
 
   // Scroll to bottom when messages change or room changes

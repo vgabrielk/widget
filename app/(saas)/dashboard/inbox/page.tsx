@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -21,7 +21,8 @@ type RoomWithWidget = Room & {
 
 export default function InboxPage() {
   const router = useRouter();
-  const supabase = createClient();
+  // CRITICAL: Create supabase client only once with useMemo to prevent infinite loops
+  const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<any>(null);
   const [widgetIds, setWidgetIds] = useState<string[]>([]);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
@@ -49,9 +50,12 @@ export default function InboxPage() {
     };
 
     loadUser();
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Use infinite query for rooms
+  // Use infinite query for rooms - queryKey changes when widgetIds change
+  const queryKey = widgetIds.length > 0 ? widgetIds.join(',') : 'no-widgets';
+  
   const { 
     data: rooms, 
     isLoading, 
@@ -63,6 +67,7 @@ export default function InboxPage() {
     tableName: 'rooms',
     columns: '*, widgets!inner(name, brand_color)',
     pageSize: 20,
+    queryKey: queryKey,
     trailingQuery: (query) => {
       let q = query;
       if (widgetIds.length > 0) {
@@ -83,16 +88,30 @@ export default function InboxPage() {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const lastRoomRef = useCallback((node: HTMLDivElement | null) => {
     if (isLoading || isFetching) return;
-    if (observerRef.current) observerRef.current.disconnect();
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
     
-    observerRef.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
-        fetchNextPage();
-      }
-    });
-    
-    if (node) observerRef.current.observe(node);
+    if (node && hasMore) {
+      observerRef.current = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && hasMore) {
+          fetchNextPage();
+        }
+      });
+      observerRef.current.observe(node);
+    }
   }, [isLoading, isFetching, hasMore, fetchNextPage]);
+
+  // Cleanup observer on unmount
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+    };
+  }, []);
 
   const openRooms = rooms?.filter(r => r.status === 'open') || [];
   const closedRooms = rooms?.filter(r => r.status === 'closed') || [];
