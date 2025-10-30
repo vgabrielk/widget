@@ -179,26 +179,26 @@ export default function SettingsPage() {
 
         {/* Profile Section */}
         <Card className="card-clean overflow-hidden">
-          <div className="h-24 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/5" />
-          <CardContent className="space-y-6 -mt-12">
+          <div className="h-16 sm:h-24 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/5" />
+          <CardContent className="space-y-4 sm:space-y-6 -mt-8 sm:-mt-12">
             {/* Avatar */}
-            <div className="flex items-start gap-6">
-              <Avatar className="h-24 w-24 border-4 border-background shadow-xl">
-                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-2xl">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
+              <Avatar className="h-16 w-16 sm:h-24 sm:w-24 border-4 border-background shadow-xl">
+                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-lg sm:text-2xl">
                   {email ? getInitials(email) : 'U'}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1 pt-8">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-2xl font-bold">{displayName || 'Usuário'}</h3>
-                  <Badge variant="secondary" className="gap-1">
+              <div className="flex-1 text-center sm:text-left sm:pt-8 min-w-0 w-full">
+                <div className="flex flex-col sm:flex-row items-center sm:items-center gap-2 sm:gap-3 mb-2">
+                  <h3 className="text-xl sm:text-2xl font-bold truncate max-w-full">{displayName || 'Usuário'}</h3>
+                  <Badge variant="secondary" className="gap-1 flex-shrink-0">
                     <Sparkles className="h-3 w-3" />
                     Ativo
                   </Badge>
                 </div>
-                <p className="text-muted-foreground flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  {email}
+                <p className="text-muted-foreground flex items-center justify-center sm:justify-start gap-2 text-sm break-all">
+                  <Mail className="h-4 w-4 flex-shrink-0" />
+                  <span className="break-all">{email}</span>
                 </p>
               </div>
             </div>
@@ -244,12 +244,12 @@ export default function SettingsPage() {
         <Card className="card-clean">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 flex-shrink-0">
                 <Bell className="h-5 w-5 text-blue-600" />
               </div>
-              <div>
-                <CardTitle>Notificações</CardTitle>
-                <CardDescription>
+              <div className="min-w-0">
+                <CardTitle className="text-base sm:text-lg">Notificações</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
                   Configure como você quer receber atualizações
                 </CardDescription>
               </div>
@@ -257,13 +257,13 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="email-notif" className="text-base font-medium flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-blue-500" />
-                    Notificações por Email
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5 flex-1 min-w-0">
+                  <Label htmlFor="email-notif" className="text-sm sm:text-base font-medium flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                    <span>Notificações por Email</span>
                   </Label>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Receba emails quando houver novas mensagens
                   </p>
                 </div>
@@ -271,18 +271,19 @@ export default function SettingsPage() {
                   id="email-notif"
                   checked={emailNotifications}
                   onCheckedChange={setEmailNotifications}
+                  className="flex-shrink-0"
                 />
               </div>
 
               <Separator />
 
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="push-notif" className="text-base font-medium flex items-center gap-2">
-                    <Bell className="h-4 w-4 text-purple-500" />
-                    Notificações Push
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5 flex-1 min-w-0">
+                  <Label htmlFor="push-notif" className="text-sm sm:text-base font-medium flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-purple-500 flex-shrink-0" />
+                    <span>Notificações Push</span>
                   </Label>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Receba notificações no navegador em tempo real
                   </p>
                 </div>
@@ -290,18 +291,19 @@ export default function SettingsPage() {
                   id="push-notif"
                   checked={pushNotifications}
                   onCheckedChange={setPushNotifications}
+                  className="flex-shrink-0"
                 />
               </div>
 
               <Separator />
 
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="weekly-reports" className="text-base font-medium flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Relatório Semanal
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5 flex-1 min-w-0">
+                  <Label htmlFor="weekly-reports" className="text-sm sm:text-base font-medium flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span>Relatório Semanal</span>
                   </Label>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Receba um resumo semanal de suas conversas
                   </p>
                 </div>
@@ -309,6 +311,7 @@ export default function SettingsPage() {
                   id="weekly-reports"
                   checked={weeklyReports}
                   onCheckedChange={setWeeklyReports}
+                  className="flex-shrink-0"
                 />
               </div>
             </div>
@@ -320,12 +323,12 @@ export default function SettingsPage() {
           <Card className="card-clean">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 flex-shrink-0">
                   <Palette className="h-5 w-5 text-purple-600" />
                 </div>
-                <div>
-                  <CardTitle>Aparência</CardTitle>
-                  <CardDescription>
+                <div className="min-w-0">
+                  <CardTitle className="text-base sm:text-lg">Aparência</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm">
                     Personalize o visual
                   </CardDescription>
                 </div>
@@ -358,12 +361,12 @@ export default function SettingsPage() {
           <Card className="card-clean">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10 flex-shrink-0">
                   <Globe className="h-5 w-5 text-green-600" />
                 </div>
-                <div>
-                  <CardTitle>Idioma & Região</CardTitle>
-                  <CardDescription>
+                <div className="min-w-0">
+                  <CardTitle className="text-base sm:text-lg">Idioma & Região</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm">
                     Configurações regionais
                   </CardDescription>
                 </div>
@@ -390,36 +393,36 @@ export default function SettingsPage() {
         {/* Security & Danger Zone */}
         <Card className="card-clean border-2 border-destructive/30 bg-destructive/5">
           <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10 flex-shrink-0">
                 <Shield className="h-5 w-5 text-destructive" />
               </div>
-              <div>
-                <CardTitle className="text-destructive flex items-center gap-2">
-                  Zona de Perigo
+              <div className="min-w-0">
+                <CardTitle className="text-destructive flex flex-col sm:flex-row items-start sm:items-center gap-2 text-base sm:text-lg">
+                  <span>Zona de Perigo</span>
                   <Badge variant="destructive" className="text-xs">Cuidado</Badge>
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs sm:text-sm">
                   Ações irreversíveis da conta
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-start justify-between gap-4 p-4 rounded-lg border border-destructive/20 bg-background">
-              <div className="flex-1">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-4 p-4 rounded-lg border border-destructive/20 bg-background">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                  <p className="font-semibold text-destructive">Deletar Conta</p>
+                  <Trash2 className="h-4 w-4 text-destructive flex-shrink-0" />
+                  <p className="font-semibold text-destructive text-sm sm:text-base">Deletar Conta</p>
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Remove permanentemente sua conta e todos os dados associados.
                   Esta ação não pode ser desfeita.
                 </p>
               </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm" className="shrink-0">
+                  <Button variant="destructive" size="sm" className="shrink-0 w-full sm:w-auto">
                     <Trash2 className="mr-2 h-4 w-4" />
                     Deletar
                   </Button>
@@ -464,23 +467,23 @@ export default function SettingsPage() {
         <Card className="card-clean border-primary/20 bg-primary/5">
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3 min-w-0 w-full sm:w-auto">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
                   <Save className="h-5 w-5 text-primary" />
                 </div>
-                <div className="min-w-0">
-                  <p className="font-semibold">Salvar Alterações</p>
-                  <p className="text-sm text-muted-foreground">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm sm:text-base">Salvar Alterações</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Suas configurações serão aplicadas imediatamente
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                 <Button
                   variant="outline"
                   onClick={() => loadUserData()}
                   disabled={saving}
-                  className="flex-1 sm:flex-none"
+                  className="w-full sm:w-auto"
                 >
                   Cancelar
                 </Button>
@@ -488,7 +491,7 @@ export default function SettingsPage() {
                   onClick={handleSave}
                   disabled={saving}
                   size="lg"
-                  className="flex-1 sm:flex-none sm:min-w-[180px]"
+                  className="w-full sm:w-auto sm:min-w-[180px]"
                 >
                   {saving ? (
                     <>
