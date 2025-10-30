@@ -273,6 +273,7 @@ function useInfiniteQuery<
   // Create store only once - avoid recreating during render
   const storeRef = useRef(createStore<TData, T>(props))
   const prevQueryKeyRef = useRef(queryKey)
+  const isInitializedRef = useRef(false)
 
   const state = useSyncExternalStore(
     storeRef.current.subscribe,
@@ -287,16 +288,18 @@ function useInfiniteQuery<
     isFetching: state.isFetching,
     hasInitialFetch: state.hasInitialFetch,
     dataCount: state.data.length,
-    totalCount: state.count
+    totalCount: state.count,
+    isInitializedRef: isInitializedRef.current
   })
   
   // Initialize once, or reset when queryKey changes
   useEffect(() => {
-    console.log('🚀 [HOOK] useEffect triggered', { 
+    console.log('🚀 [HOOK] useEffect RUNNING!', { 
       tableName, 
       queryKey, 
       prevQueryKey: prevQueryKeyRef.current,
-      hasInitialFetch: storeRef.current.getState().hasInitialFetch
+      hasInitialFetch: storeRef.current.getState().hasInitialFetch,
+      isInitializedRef: isInitializedRef.current
     })
     
     if (typeof window === 'undefined') {
@@ -312,11 +315,17 @@ function useInfiniteQuery<
       })
       prevQueryKeyRef.current = queryKey
       storeRef.current = createStore<TData, T>(props)
+      isInitializedRef.current = false
     }
 
-    // Initialize the store
-    console.log('🎬 [HOOK] Calling store.initialize()...')
-    storeRef.current.initialize()
+    // Only initialize if not already initialized
+    if (!isInitializedRef.current) {
+      console.log('🎬 [HOOK] First time initialization - calling store.initialize()...')
+      isInitializedRef.current = true
+      storeRef.current.initialize()
+    } else {
+      console.log('⏭️ [HOOK] Already initialized, skipping...')
+    }
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableName, columns, pageSize, queryKey])
