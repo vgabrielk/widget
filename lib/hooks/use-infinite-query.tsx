@@ -115,7 +115,6 @@ function createStore<TData extends SupabaseTableData<T>, T extends SupabaseTable
   const fetchPage = async (skip: number) => {
     if (state.hasInitialFetch && (state.isFetching || state.count <= state.data.length)) return
 
-    console.log('📥 Fetching page:', { tableName, skip, pageSize })
     setState({ isFetching: true })
 
     let query = supabase
@@ -128,14 +127,9 @@ function createStore<TData extends SupabaseTableData<T>, T extends SupabaseTable
     const { data: newData, count, error } = await query.range(skip, skip + pageSize - 1)
 
     if (error) {
-      console.error('❌ Query error:', error)
+      console.error('Query error:', error)
       setState({ error })
     } else {
-      console.log('✅ Query success:', { 
-        received: newData?.length || 0, 
-        total: count,
-        tableName 
-      })
       setState({
         data: [...state.data, ...(newData as TData[])],
         count: count || 0,
@@ -152,14 +146,12 @@ function createStore<TData extends SupabaseTableData<T>, T extends SupabaseTable
   }
 
   const initialize = async () => {
-    console.log('🎬 Store.initialize() called', { tableName })
     setState({ isLoading: true, isSuccess: false, data: [] })
     await fetchNextPage()
     setState({ isLoading: false, hasInitialFetch: true })
   }
   
   const reset = async () => {
-    console.log('🔄 Store.reset() called', { tableName })
     setState({ 
       isLoading: true, 
       isSuccess: false, 
@@ -208,11 +200,6 @@ function useInfiniteQuery<
   
   // Check if queryKey changed - if so, recreate store immediately
   if (prevQueryKeyRef.current !== queryKey) {
-    console.log('🔄 useInfiniteQuery: QueryKey changed (in render)', { 
-      from: prevQueryKeyRef.current, 
-      to: queryKey,
-      tableName 
-    })
     prevQueryKeyRef.current = queryKey
     // Recreate store with new props synchronously during render
     storeRef.current = createStore<TData, T>(props)
@@ -227,7 +214,6 @@ function useInfiniteQuery<
   // Initialize store after mounting or when queryKey changes
   useEffect(() => {
     if (!state.hasInitialFetch && typeof window !== 'undefined') {
-      console.log('🆕 useInfiniteQuery: Initializing', { tableName, queryKey })
       storeRef.current.initialize()
     }
   }, [tableName, columns, pageSize, queryKey, state.hasInitialFetch])

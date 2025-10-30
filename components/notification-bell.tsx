@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { Bell, MessageSquare, CheckCheck, ExternalLink } from 'lucide-react';
@@ -39,20 +39,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   const router = useRouter();
   const supabase = createClient();
 
-  useEffect(() => {
-    if (!userId) return;
-    
-    console.log('🔔 NotificationBell: Initializing for user:', userId);
-    loadNotifications();
-    const cleanup = subscribeToNotifications();
-    
-    return () => {
-      if (cleanup) cleanup();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       // Get user's widgets
       const { data: widgets } = await supabase
@@ -100,11 +87,19 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, supabase]);
 
-  const subscribeToNotifications = () => {
-    console.log('🔔 NotificationBell: Subscribing to notifications for user:', userId);
-    
+  const playNotificationSound = useCallback(() => {
+    try {
+      const audio = new Audio('/notification.mp3');
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+    } catch (error) {
+      // Silently fail
+    }
+  }, []);
+
+  const subscribeToNotifications = useCallback(() => {
     // Subscribe to rooms updates (which includes message counts)
     // Note: We subscribe to rooms instead of messages to avoid RLS issues
     const channel = supabase
@@ -117,7 +112,6 @@ export function NotificationBell({ userId }: NotificationBellProps) {
           table: 'rooms',
         },
         async (payload) => {
-          console.log('🔔 Room updated notification received:', payload);
           const oldRoom = payload.old as any;
           const newRoom = payload.new as any;
           
@@ -152,42 +146,34 @@ export function NotificationBell({ userId }: NotificationBellProps) {
           table: 'rooms',
         },
         async () => {
-          console.log('🔔 New conversation notification received');
           await loadNotifications();
         }
       )
-      .subscribe((status) => {
-        console.log('🔔 Notification subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to notifications');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Error subscribing to notifications');
-        }
-      });
+      .subscribe();
 
     return () => {
-      console.log('🔔 NotificationBell: Unsubscribing from notifications...');
       supabase.removeChannel(channel);
     };
-  };
+  }, [userId, supabase, loadNotifications, playNotificationSound]);
 
-  const playNotificationSound = () => {
-    try {
-      const audio = new Audio('/notification.mp3');
-      audio.volume = 0.5;
-      audio.play().catch(err => console.log('Could not play notification sound:', err));
-    } catch (error) {
-      console.log('Notification sound error:', error);
-    }
-  };
+  useEffect(() => {
+    if (!userId) return;
+    
+    loadNotifications();
+    const cleanup = subscribeToNotifications();
+    
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [userId, loadNotifications, subscribeToNotifications]);
 
-  const handleNotificationClick = async (notification: Notification) => {
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
     if (notification.widget_id) {
       router.push(`/dashboard/widgets/${notification.widget_id}/inbox`);
     }
-  };
+  }, [router]);
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     try {
       // Get user's widgets
       const { data: widgets } = await supabase
@@ -210,18 +196,15 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     } catch (error) {
       console.error('Error marking as read:', error);
     }
-  };
-
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        console.log('Notification permission granted');
-      }
-    }
-  };
+  }, [userId, supabase]);
 
   useEffect(() => {
+    const requestNotificationPermission = async () => {
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+    };
+    
     requestNotificationPermission();
   }, []);
 

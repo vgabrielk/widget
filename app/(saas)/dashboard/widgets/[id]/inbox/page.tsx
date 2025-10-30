@@ -69,16 +69,30 @@ export default function InboxPage() {
   const roomsObserverRef = useRef<IntersectionObserver | null>(null);
   const lastRoomRef = useCallback((node: HTMLElement | null) => {
     if (isRoomsLoading || isRoomsFetching) return;
-    if (roomsObserverRef.current) roomsObserverRef.current.disconnect();
+    if (roomsObserverRef.current) {
+      roomsObserverRef.current.disconnect();
+      roomsObserverRef.current = null;
+    }
     
-    roomsObserverRef.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMoreRooms) {
-        fetchNextRoomsPage();
-      }
-    });
-    
-    if (node) roomsObserverRef.current.observe(node);
+    if (node && hasMoreRooms) {
+      roomsObserverRef.current = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && hasMoreRooms) {
+          fetchNextRoomsPage();
+        }
+      });
+      roomsObserverRef.current.observe(node);
+    }
   }, [isRoomsLoading, isRoomsFetching, hasMoreRooms, fetchNextRoomsPage]);
+  
+  // Cleanup rooms observer on unmount
+  useEffect(() => {
+    return () => {
+      if (roomsObserverRef.current) {
+        roomsObserverRef.current.disconnect();
+        roomsObserverRef.current = null;
+      }
+    };
+  }, []);
 
   // Use infinite query for messages (reverse order - newest first, then older)
   const { 
@@ -94,11 +108,9 @@ export default function InboxPage() {
     trailingQuery: (query) => {
       let q = query;
       if (selectedRoomId) {
-        console.log('🔍 Query: Loading messages for room:', selectedRoomId);
         // SEGURANÇA: Só busca mensagens da sala selecionada
         q = q.eq('room_id', selectedRoomId);
       } else {
-        console.log('🔍 Query: No room selected, using impossible filter');
         // CRÍTICO: Se não tem sala selecionada, retornar vazio (filtro impossível)
         // Isso previne carregar TODAS as mensagens quando selectedRoomId é null
         q = q.eq('room_id', '00000000-0000-0000-0000-000000000000');
@@ -107,16 +119,16 @@ export default function InboxPage() {
     }
   });
   
-  // Debug: Log query state changes
-  useEffect(() => {
-    console.log('📊 Query State:', { 
-      selectedRoomId,
-      historicalCount: historicalMessages.length,
-      isLoading: isMessagesLoading,
-      isFetching: isMessagesFetching,
-      hasMore: hasMoreMessages
-    });
-  }, [selectedRoomId, historicalMessages.length, isMessagesLoading, isMessagesFetching, hasMoreMessages]);
+  // Debug: Log query state changes (disabled for performance)
+  // useEffect(() => {
+  //   console.log('📊 Query State:', { 
+  //     selectedRoomId,
+  //     historicalCount: historicalMessages.length,
+  //     isLoading: isMessagesLoading,
+  //     isFetching: isMessagesFetching,
+  //     hasMore: hasMoreMessages
+  //   });
+  // }, [selectedRoomId, historicalMessages.length, isMessagesLoading, isMessagesFetching, hasMoreMessages]);
 
   // Combine historical messages (reversed to show oldest first) with new real-time messages
   // Remove duplicates by checking message IDs
@@ -131,12 +143,12 @@ export default function InboxPage() {
     const uniqueNewMessages = newMessages.filter(m => !historicalIds.has(m.id));
     const combined = [...historical, ...uniqueNewMessages];
     
-    console.log('📨 Messages combined:', { 
-      historical: historical.length, 
-      new: uniqueNewMessages.length, 
-      total: combined.length,
-      roomId: selectedRoomId
-    });
+    // console.log('📨 Messages combined:', { 
+    //   historical: historical.length, 
+    //   new: uniqueNewMessages.length, 
+    //   total: combined.length,
+    //   roomId: selectedRoomId
+    // });
     
     return combined;
   }, [historicalMessages, newMessages, selectedRoomId]);
@@ -149,9 +161,10 @@ export default function InboxPage() {
   const firstMessageRef = useCallback((node: HTMLDivElement | null) => {
     if (messagesObserverRef.current) {
       messagesObserverRef.current.disconnect();
+      messagesObserverRef.current = null;
     }
     
-    if (node && !isMessagesLoading && !isMessagesFetching) {
+    if (node && !isMessagesLoading && !isMessagesFetching && hasMoreMessages) {
       messagesObserverRef.current = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting && hasMoreMessages && !loadingOlderMessagesRef.current) {
           loadingOlderMessagesRef.current = true;
@@ -200,8 +213,6 @@ export default function InboxPage() {
   useEffect(() => {
     if (!widgetId) return;
 
-    console.log('🔔 Subscribing to rooms updates for widget:', widgetId);
-
     const channel = supabase
       .channel(`widget-rooms-${widgetId}`)
       .on(
@@ -213,14 +224,12 @@ export default function InboxPage() {
           filter: `widget_id=eq.${widgetId}`,
         },
         (payload) => {
-          console.log('🔔 Room update received:', payload);
           const updatedRoom = payload.new as Room;
           const oldRoom = payload.old as Partial<Room> | null;
           const roomId = oldRoom?.id || updatedRoom?.id;
           
           // Update liveRooms optimistically
           if (payload.eventType === 'INSERT' && updatedRoom) {
-            console.log('➕ New room created - adding to list');
             setLiveRooms(prev => {
               // Check if already exists
               if (prev.some(r => r.id === updatedRoom.id)) return prev;
@@ -228,7 +237,6 @@ export default function InboxPage() {
               return [updatedRoom, ...prev];
             });
           } else if (payload.eventType === 'UPDATE' && updatedRoom) {
-            console.log('🔄 Room updated - updating in list');
             setLiveRooms(prev => {
               const index = prev.findIndex(r => r.id === updatedRoom.id);
               if (index === -1) {
@@ -254,7 +262,6 @@ export default function InboxPage() {
               setSelectedRoom(updatedRoom);
             }
           } else if (payload.eventType === 'DELETE' && roomId) {
-            console.log('🗑️ Room deleted - removing from list');
             setLiveRooms(prev => prev.filter(r => r.id !== roomId));
             
             // Clear selection if deleted room was selected
@@ -265,15 +272,12 @@ export default function InboxPage() {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('🔔 Rooms subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
-      console.log('🧹 Unsubscribing from rooms updates');
       supabase.removeChannel(channel);
     };
-  }, [widgetId, supabase, selectedRoom]);
+  }, [widgetId]); // Removed selectedRoom from deps - causes unnecessary reconnections
 
   // Filter rooms
   useEffect(() => {
@@ -296,23 +300,18 @@ export default function InboxPage() {
     setFilteredRooms(filtered);
   }, [liveRooms, searchQuery, statusFilter]);
 
-  // Monitor selectedRoomId changes
-  useEffect(() => {
-    console.log('🎯 selectedRoomId changed:', {
-      old: currentRoomIdRef.current,
-      new: selectedRoomId,
-      hasRoom: !!selectedRoom
-    });
-  }, [selectedRoomId]);
+  // Monitor selectedRoomId changes (disabled for performance)
+  // useEffect(() => {
+  //   console.log('🎯 selectedRoomId changed:', {
+  //     old: currentRoomIdRef.current,
+  //     new: selectedRoomId,
+  //     hasRoom: !!selectedRoom
+  //   });
+  // }, [selectedRoomId]);
 
   // Handle room selection
   useEffect(() => {
     if (selectedRoom) {
-      console.log('🔄 Switching to room:', selectedRoom.id, {
-        currentRef: currentRoomIdRef.current,
-        selectedRoomId: selectedRoomId
-      });
-      
       // CRITICAL: Update ref IMMEDIATELY (synchronous) before any async operations
       currentRoomIdRef.current = selectedRoom.id;
       
@@ -329,11 +328,9 @@ export default function InboxPage() {
       const cleanup = subscribeToMessages(selectedRoom.id);
       
       return () => {
-        console.log('🧹 Cleaning up room:', selectedRoom.id);
         cleanup();
       };
     } else {
-      console.log('❌ No room selected');
       currentRoomIdRef.current = null;
       setSelectedRoomId(null);
       setNewMessages([]);
@@ -376,7 +373,7 @@ export default function InboxPage() {
   }, [selectedRoomId]);
 
 
-  const loadWidget = async () => {
+  const loadWidget = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('widgets')
@@ -397,9 +394,9 @@ export default function InboxPage() {
     } finally {
       setIsWidgetLoading(false);
     }
-  };
+  }, [widgetId, supabase, router]);
 
-  const subscribeToMessages = (roomId: string) => {
+  const subscribeToMessages = useCallback((roomId: string) => {
     const channel = supabase
       .channel(`room-messages-${roomId}`)
       .on(
@@ -416,7 +413,6 @@ export default function InboxPage() {
           // CRITICAL: Only add message if it's for the currently selected room
           // This prevents race condition when switching rooms quickly
           if (currentRoomIdRef.current !== roomId) {
-            console.log('⚠️ Ignoring message for old room:', roomId, 'current:', currentRoomIdRef.current);
             return;
           }
           
@@ -432,8 +428,6 @@ export default function InboxPage() {
           
           // Se a conversa está aberta, marcar mensagem como lida automaticamente
           if (newMessage.sender_type === 'visitor' && !newMessage.is_read) {
-            console.log('📖 Auto-marking new visitor message as read (room is open)');
-            
             // Marcar como lida no banco (sem await para não bloquear UI)
             supabase
               .from('messages')
@@ -452,20 +446,16 @@ export default function InboxPage() {
       .subscribe();
 
     return () => {
-      console.log('🧹 Cleaning up subscription for room:', roomId);
       supabase.removeChannel(channel);
     };
-  };
+  }, [supabase]);
 
-  const markAsRead = async (roomId: string) => {
+  const markAsRead = useCallback(async (roomId: string) => {
     try {
       // CRITICAL: Only mark as read if room is still selected
       if (roomId !== currentRoomIdRef.current) {
-        console.log('⚠️ Skip marking as read - room changed');
         return;
       }
-      
-      console.log('📖 Marking room as read:', roomId);
       
       // Atualização otimista - UI primeiro
       setLiveRooms(prev => 
@@ -491,18 +481,14 @@ export default function InboxPage() {
         
       if (roomError) {
         console.error('Error updating room unread count:', roomError);
-      } else {
-        console.log('✅ Room marked as read:', roomId);
       }
     } catch (error) {
       console.error('Error marking as read:', error);
     }
-  };
+  }, [supabase]);
 
   // Handler para clique na conversa - garante visualização
-  const handleRoomClick = (room: Room) => {
-    console.log('👆 Room clicked:', room.id, { hasUnread: room.unread_count > 0 });
-    
+  const handleRoomClick = useCallback((room: Room) => {
     // Atualização otimista IMEDIATA do badge
     if (room.unread_count > 0) {
       setLiveRooms(prev => 
@@ -512,13 +498,11 @@ export default function InboxPage() {
     
     // Selecionar a room (isso vai triggar markAsRead via useEffect)
     setSelectedRoom(room);
-  };
+  }, []);
 
   // Handler para clique na área de mensagens - garante que está marcado como lido
-  const handleMessagesAreaClick = () => {
+  const handleMessagesAreaClick = useCallback(() => {
     if (selectedRoom && selectedRoom.unread_count > 0) {
-      console.log('👆 Messages area clicked - ensuring read status');
-      
       // Atualização otimista
       setLiveRooms(prev => 
         prev.map(r => r.id === selectedRoom.id ? { ...r, unread_count: 0 } : r)
@@ -527,9 +511,9 @@ export default function InboxPage() {
       // Marcar como lido (função já tem proteção de duplicação)
       markAsRead(selectedRoom.id);
     }
-  };
+  }, [selectedRoom, markAsRead]);
 
-  const sendMessage = async () => {
+  const sendMessage = useCallback(async () => {
     if (!inputValue.trim() || !selectedRoom) return;
     
     // CRITICAL: Capture room ID at the moment of sending
@@ -538,7 +522,6 @@ export default function InboxPage() {
     try {
       // Validate room hasn't changed before sending
       if (roomIdAtSend !== currentRoomIdRef.current) {
-        console.warn('⚠️ Room changed while sending, aborting');
         return;
       }
 
@@ -573,22 +556,21 @@ export default function InboxPage() {
       // Restore input value on error
       setInputValue(inputValue);
     }
-  };
+  }, [inputValue, selectedRoom, supabase, profile]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
-  };
+  }, [sendMessage]);
 
-  const closeConversation = async (roomId: string) => {
+  const closeConversation = useCallback(async (roomId: string) => {
     if (!confirm('Deseja realmente fechar esta conversa?')) return;
 
     try {
       // CRITICAL: Verify room is still selected before proceeding
       if (roomId !== currentRoomIdRef.current) {
-        console.warn('⚠️ Room changed, aborting close operation');
         return;
       }
 
@@ -654,13 +636,12 @@ export default function InboxPage() {
       console.error('Error closing conversation:', error);
       alert('Erro ao fechar conversa. Tente novamente.');
     }
-  };
+  }, [supabase]);
 
-  const reopenConversation = async (roomId: string) => {
+  const reopenConversation = useCallback(async (roomId: string) => {
     try {
       // CRITICAL: Verify room is still selected
       if (roomId !== currentRoomIdRef.current) {
-        console.warn('⚠️ Room changed, aborting reopen operation');
         return;
       }
 
@@ -684,7 +665,7 @@ export default function InboxPage() {
     } catch (error) {
       console.error('Error reopening conversation:', error);
     }
-  };
+  }, [supabase]);
 
   const getInitials = (name: string | null) => {
     if (!name) return 'V';
