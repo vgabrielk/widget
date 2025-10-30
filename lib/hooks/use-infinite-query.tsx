@@ -113,57 +113,108 @@ function createStore<TData extends SupabaseTableData<T>, T extends SupabaseTable
   }
 
   const fetchPage = async (skip: number) => {
-    // Only check isFetching to prevent concurrent requests
-    if (state.isFetching) return
+    console.log('📥 [STORE] fetchPage called', { 
+      skip, 
+      tableName,
+      isFetching: state.isFetching, 
+      hasInitialFetch: state.hasInitialFetch,
+      count: state.count,
+      dataLength: state.data.length 
+    })
+    
+    // CRITICAL: If isFetching is stuck, force reset it
+    if (state.isFetching) {
+      console.warn('⚠️ [STORE] isFetching is already true! Forcing reset...')
+      setState({ isFetching: false })
+      // Small delay to ensure state update
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
     
     // If we already have all data, don't fetch more
-    if (state.hasInitialFetch && state.count > 0 && state.count <= state.data.length) return
+    if (state.hasInitialFetch && state.count > 0 && state.count <= state.data.length) {
+      console.log('⏸️ [STORE] Already have all data, skipping...', { count: state.count, dataLength: state.data.length })
+      return
+    }
 
     setState({ isFetching: true })
+    console.log('✅ [STORE] Set isFetching = true')
 
     try {
+      console.log('🔍 [STORE] Building query...')
       let query = supabase
         .from(tableName)
         .select(columns, { count: 'exact' }) as unknown as SupabaseSelectBuilder<T>
 
       if (trailingQuery) {
+        console.log('🔧 [STORE] Applying trailingQuery...')
         query = trailingQuery(query)
       }
+      
+      console.log('🌐 [STORE] Executing query...', { skip, pageSize })
       const { data: newData, count, error } = await query.range(skip, skip + pageSize - 1)
+      
+      console.log('📨 [STORE] Query response received', { 
+        hasData: !!newData, 
+        dataLength: newData?.length,
+        count,
+        hasError: !!error 
+      })
 
       if (error) {
-        console.error('Query error:', error)
-        setState({ error })
+        console.error('❌ [STORE] Query error:', error)
+        setState({ error, isFetching: false })
       } else {
+        console.log('✅ [STORE] Query success', { 
+          received: newData?.length || 0, 
+          totalCount: count,
+          newTotalData: state.data.length + (newData?.length || 0)
+        })
         setState({
           data: [...state.data, ...(newData as TData[])],
           count: count || 0,
           isSuccess: true,
           error: null,
+          isFetching: false
         })
       }
     } catch (err) {
-      console.error('Fetch page error:', err)
-      setState({ error: err as Error })
+      console.error('❌ [STORE] Fetch page error:', err)
+      setState({ error: err as Error, isFetching: false })
     } finally {
-      setState({ isFetching: false })
+      console.log('🏁 [STORE] fetchPage FINALLY - ensuring isFetching=false')
+      // Double-check to ensure it's false
+      if (state.isFetching) {
+        console.warn('⚠️ [STORE] isFetching still true in finally! Forcing false...')
+        setState({ isFetching: false })
+      }
     }
   }
 
   const fetchNextPage = async () => {
-    if (state.isFetching) return
+    console.log('➡️ [STORE] fetchNextPage called', { 
+      isFetching: state.isFetching, 
+      currentDataLength: state.data.length 
+    })
+    if (state.isFetching) {
+      console.log('⏸️ [STORE] fetchNextPage: Already fetching, skipping')
+      return
+    }
     await fetchPage(state.data.length)
   }
 
   const initialize = async () => {
+    console.log('🎬 [STORE] Initialize START', { tableName, hasInitialFetch: state.hasInitialFetch })
     try {
       setState({ isLoading: true, isSuccess: false, data: [] })
+      console.log('🎬 [STORE] Calling fetchNextPage...')
       await fetchNextPage()
+      console.log('✅ [STORE] fetchNextPage completed')
     } catch (err) {
-      console.error('Initialize error:', err)
+      console.error('❌ [STORE] Initialize error:', err)
       setState({ error: err as Error })
     } finally {
       // CRITICAL: Always set hasInitialFetch to true to prevent infinite loops
+      console.log('🏁 [STORE] Initialize FINALLY - setting hasInitialFetch=true')
       setState({ isLoading: false, hasInitialFetch: true })
     }
   }
@@ -217,6 +268,8 @@ function useInfiniteQuery<
 >(props: UseInfiniteQueryProps<T>) {
   const { tableName, columns, pageSize, queryKey } = props
   
+  console.log('🔄 [HOOK] useInfiniteQuery render', { tableName, queryKey })
+  
   // Create store only once - avoid recreating during render
   const storeRef = useRef(createStore<TData, T>(props))
   const prevQueryKeyRef = useRef(queryKey)
@@ -227,17 +280,42 @@ function useInfiniteQuery<
     () => initialState as StoreState<TData>
   )
   
+  console.log('📊 [HOOK] Current state', { 
+    tableName,
+    queryKey,
+    isLoading: state.isLoading, 
+    isFetching: state.isFetching,
+    hasInitialFetch: state.hasInitialFetch,
+    dataCount: state.data.length,
+    totalCount: state.count
+  })
+  
   // Initialize once, or reset when queryKey changes
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    console.log('🚀 [HOOK] useEffect triggered', { 
+      tableName, 
+      queryKey, 
+      prevQueryKey: prevQueryKeyRef.current,
+      hasInitialFetch: storeRef.current.getState().hasInitialFetch
+    })
+    
+    if (typeof window === 'undefined') {
+      console.log('⏸️ [HOOK] Server-side, skipping...')
+      return
+    }
 
     // If queryKey changed, recreate store and reset
     if (prevQueryKeyRef.current !== queryKey) {
+      console.log('🔄 [HOOK] QueryKey changed! Recreating store...', {
+        from: prevQueryKeyRef.current,
+        to: queryKey
+      })
       prevQueryKeyRef.current = queryKey
       storeRef.current = createStore<TData, T>(props)
     }
 
     // Initialize the store
+    console.log('🎬 [HOOK] Calling store.initialize()...')
     storeRef.current.initialize()
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
