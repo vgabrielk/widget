@@ -3,9 +3,29 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { roomId } = await request.json();
+    let roomId: string | null = null;
+
+    // Try to get roomId from JSON body
+    try {
+      const body = await request.json();
+      roomId = body.roomId;
+    } catch {
+      // If JSON parsing fails, try FormData (sendBeacon might send as FormData)
+      try {
+        const formData = await request.formData();
+        roomId = formData.get('roomId') as string;
+      } catch {
+        // If both fail, try URLSearchParams
+        const text = await request.text();
+        const params = new URLSearchParams(text);
+        roomId = params.get('roomId');
+      }
+    }
+
+    console.log('[Offline API] Received roomId:', roomId);
 
     if (!roomId) {
+      console.error('[Offline API] No roomId provided');
       return NextResponse.json(
         { error: 'roomId is required' },
         { status: 400 }
@@ -15,24 +35,29 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
 
     // Set last_activity to far past to immediately show as offline
+    const offlineTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    
+    console.log('[Offline API] Setting offline for room:', roomId, 'at:', offlineTime);
+
     const { error } = await supabase
       .from('rooms')
       .update({ 
-        last_activity: new Date(Date.now() - 10 * 60 * 1000).toISOString() // 10 minutes ago
+        last_activity: offlineTime
       })
       .eq('id', roomId);
 
     if (error) {
-      console.error('Offline update error:', error);
+      console.error('[Offline API] Update error:', error);
       return NextResponse.json(
         { error: 'Failed to update status' },
         { status: 500 }
       );
     }
 
+    console.log('[Offline API] Successfully marked offline');
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Offline error:', error);
+    console.error('[Offline API] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

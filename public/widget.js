@@ -669,32 +669,52 @@
 
     // Marcar visitante como offline
     function markAsOffline() {
-        if (!roomId) return;
+        if (!roomId) {
+            console.log('ChatWidget: No roomId to mark offline');
+            return;
+        }
+        
+        console.log('ChatWidget: Marking as offline, roomId:', roomId);
         
         try {
-            // Usar sendBeacon para garantir que seja enviado mesmo ao fechar página
-            const data = JSON.stringify({ roomId });
-            const blob = new Blob([data], { type: 'application/json' });
+            // Usar FormData para máxima compatibilidade com sendBeacon
+            const formData = new FormData();
+            formData.append('roomId', roomId);
             
             // sendBeacon é mais confiável para eventos de unload
             if (navigator.sendBeacon) {
-                navigator.sendBeacon(`${API_BASE}/api/visitor/offline`, blob);
+                const sent = navigator.sendBeacon(`${API_BASE}/api/visitor/offline`, formData);
+                console.log('ChatWidget: sendBeacon result:', sent);
+                
+                // Se sendBeacon falhar, tentar fetch como fallback
+                if (!sent) {
+                    console.warn('ChatWidget: sendBeacon failed, trying fetch fallback');
+                    fetch(`${API_BASE}/api/visitor/offline`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ roomId }),
+                        keepalive: true,
+                    }).catch(err => console.error('ChatWidget: Fetch fallback failed:', err));
+                }
             } else {
-                // Fallback para fetch síncrono
+                // Fallback para navegadores que não suportam sendBeacon
+                console.log('ChatWidget: Using fetch fallback (no sendBeacon support)');
                 fetch(`${API_BASE}/api/visitor/offline`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: data,
-                    keepalive: true, // Mantém a requisição mesmo após fechar página
-                }).catch(() => {});
+                    body: JSON.stringify({ roomId }),
+                    keepalive: true,
+                }).catch(err => console.error('ChatWidget: Fetch failed:', err));
             }
         } catch (err) {
-            console.warn('ChatWidget: Failed to mark as offline:', err);
+            console.error('ChatWidget: Failed to mark as offline:', err);
         }
     }
 
     function cleanupSubscriptions() {
         console.log('ChatWidget: Cleaning up subscriptions...');
+        console.log('ChatWidget: Current roomId:', roomId);
+        console.log('ChatWidget: isOpen:', isOpen);
         
         stopHeartbeat();
         markAsOffline(); // Marcar como offline ao limpar
@@ -1564,4 +1584,17 @@
                 console.error('ChatWidget: Error loading widget config:', error);
             }
         });
+    
+    // Expor funções para debug (apenas em desenvolvimento)
+    window.ChatWidgetDebug = {
+        markOffline: () => markAsOffline(),
+        getRoomId: () => roomId,
+        getStatus: () => ({
+            roomId,
+            isOpen,
+            hasSubmittedInfo,
+            hasActiveRoom,
+            heartbeatActive: heartbeatInterval !== null
+        })
+    };
 })();
