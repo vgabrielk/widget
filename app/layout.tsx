@@ -8,8 +8,22 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Next.js and Supabase Starter Kit",
-  description: "The fastest way to build apps with Next.js and Supabase",
+  title: "Jello - Real-time Chat Widget",
+  description: "Professional real-time chat widget for your website",
+  icons: {
+    icon: [
+      {
+        url: '/jello-logo.png',
+        type: 'image/png',
+      },
+    ],
+    apple: [
+      {
+        url: '/jello-logo.png',
+        type: 'image/png',
+      },
+    ],
+  },
 };
 
 export const viewport: Viewport = {

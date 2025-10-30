@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { JelloLogo } from '@/components/jello-logo';
 
 interface SidebarProps {
   email?: string;
@@ -102,16 +103,10 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
   return (
     <aside className="flex h-full w-full flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))]">
       {/* Logo */}
-      <div className="flex h-14 sm:h-16 items-center gap-3 border-b border-[hsl(var(--sidebar-border))] px-4 sm:px-6">
-        <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-primary">
-          <MessageSquare className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
-        </div>
-        <div>
-          <h1 className="text-base sm:text-lg font-bold text-[hsl(var(--sidebar-foreground))]">
-            ChatWidget
-          </h1>
-          <p className="text-xs text-muted-foreground">Real-time Chat</p>
-        </div>
+      <div className="flex h-14 sm:h-16 items-center justify-center border-b border-[hsl(var(--sidebar-border))] px-4 sm:px-6">
+        <Link href="/dashboard" className="flex items-center">
+          <JelloLogo width={140} height={36} priority />
+        </Link>
       </div>
 
       {/* Navigation */}

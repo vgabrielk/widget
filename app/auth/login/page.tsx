@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { MessageSquare, ArrowLeft, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { JelloLogo, JelloLogoCompact } from '@/components/jello-logo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -76,11 +77,8 @@ export default function LoginPage() {
         <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
-              <MessageSquare className="h-7 w-7 text-white" />
-            </div>
-            <span className="text-2xl font-bold text-white">ChatWidget</span>
+          <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 w-fit">
+            <JelloLogoCompact size={48} />
           </div>
         </div>
 
@@ -119,11 +117,8 @@ export default function LoginPage() {
 
         <div className="w-full max-w-md space-y-8">
           {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <MessageSquare className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold">ChatWidget</span>
+          <div className="lg:hidden flex items-center justify-center mb-8">
+            <JelloLogo width={160} height={42} priority />
           </div>
 
           {/* Header */}
