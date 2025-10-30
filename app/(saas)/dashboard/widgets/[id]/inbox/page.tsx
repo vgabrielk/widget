@@ -22,8 +22,8 @@ import {
   Loader2,
   ArrowLeft
 } from 'lucide-react';
-import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query-simple';
 import { useUser } from '@/lib/contexts/user-context';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function InboxPage() {
   const params = useParams();
@@ -32,7 +32,7 @@ export default function InboxPage() {
   const { user, profile } = useUser();
   
   const [widget, setWidget] = useState<Widget | null>(null);
-  const [liveRooms, setLiveRooms] = useState<Room[]>([]); // Live updated rooms from realtime
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [filteredRooms, setFilteredRooms] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -40,155 +40,56 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [isWidgetLoading, setIsWidgetLoading] = useState(true);
-  const [newMessages, setNewMessages] = useState<Message[]>([]);
+  const [isRoomsLoading, setIsRoomsLoading] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const currentRoomIdRef = useRef<string | null>(null); // Track current room to prevent race conditions
+  const currentRoomIdRef = useRef<string | null>(null);
   
   // CRITICAL: Create supabase client only once with useMemo to prevent infinite loops
   const supabase = useMemo(() => createClient(), []);
 
-  // Use infinite query for rooms
-  const { 
-    data: rooms, 
-    isLoading: isRoomsLoading, 
-    isFetching: isRoomsFetching, 
-    hasMore: hasMoreRooms, 
-    fetchNextPage: fetchNextRoomsPage,
-    count: roomsCount 
-  } = useInfiniteQuery<Room, 'rooms'>({
-    tableName: 'rooms',
-    pageSize: 20,
-    queryKey: `rooms-${widgetId}`, // Static key - won't force reload
-    trailingQuery: (query) => 
-      query
+  // Load rooms
+  const loadRooms = useCallback(async () => {
+    try {
+      setIsRoomsLoading(true);
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
         .eq('widget_id', widgetId)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-  });
+        .limit(100);
 
-  // Infinite scroll observer for rooms
-  const roomsObserverRef = useRef<IntersectionObserver | null>(null);
-  const lastRoomRef = useCallback((node: HTMLElement | null) => {
-    if (isRoomsLoading || isRoomsFetching) return;
-    if (roomsObserverRef.current) {
-      roomsObserverRef.current.disconnect();
-      roomsObserverRef.current = null;
+      if (error) throw error;
+      setRooms(data || []);
+    } catch (error) {
+      console.error('Error loading rooms:', error);
+    } finally {
+      setIsRoomsLoading(false);
     }
-    
-    if (node && hasMoreRooms) {
-      roomsObserverRef.current = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting && hasMoreRooms) {
-          fetchNextRoomsPage();
-        }
-      });
-      roomsObserverRef.current.observe(node);
-    }
-  }, [isRoomsLoading, isRoomsFetching, hasMoreRooms, fetchNextRoomsPage]);
-  
-  // Cleanup rooms observer on unmount
-  useEffect(() => {
-    return () => {
-      if (roomsObserverRef.current) {
-        roomsObserverRef.current.disconnect();
-        roomsObserverRef.current = null;
-      }
-    };
-  }, []);
+  }, [widgetId, supabase]);
 
-  // Use infinite query for messages (reverse order - newest first, then older)
-  const { 
-    data: historicalMessages, 
-    isLoading: isMessagesLoading, 
-    isFetching: isMessagesFetching, 
-    hasMore: hasMoreMessages, 
-    fetchNextPage: fetchNextMessagesPage,
-  } = useInfiniteQuery<Message, 'messages'>({
-    tableName: 'messages',
-    pageSize: 30,
-    queryKey: selectedRoomId || 'no-room', // Reset when room changes
-    trailingQuery: (query) => {
-      let q = query;
-      if (selectedRoomId) {
-        // SEGURANÇA: Só busca mensagens da sala selecionada
-        q = q.eq('room_id', selectedRoomId);
-      } else {
-        // CRÍTICO: Se não tem sala selecionada, retornar vazio (filtro impossível)
-        // Isso previne carregar TODAS as mensagens quando selectedRoomId é null
-        q = q.eq('room_id', '00000000-0000-0000-0000-000000000000');
-      }
-      return q.order('created_at', { ascending: false });
-    }
-  });
-  
-  // Debug: Log query state changes (disabled for performance)
-  // useEffect(() => {
-  //   console.log('📊 Query State:', { 
-  //     selectedRoomId,
-  //     historicalCount: historicalMessages.length,
-  //     isLoading: isMessagesLoading,
-  //     isFetching: isMessagesFetching,
-  //     hasMore: hasMoreMessages
-  //   });
-  // }, [selectedRoomId, historicalMessages.length, isMessagesLoading, isMessagesFetching, hasMoreMessages]);
+  // Load messages for selected room
+  const loadMessages = useCallback(async (roomId: string) => {
+    try {
+      setIsMessagesLoading(true);
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+        .limit(200);
 
-  // Combine historical messages (reversed to show oldest first) with new real-time messages
-  // Remove duplicates by checking message IDs
-  const messages = useMemo(() => {
-    // Only show messages if a room is selected
-    if (!selectedRoomId) {
-      return [];
+      if (error) throw error;
+      setMessages(data || []);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+    } finally {
+      setIsMessagesLoading(false);
     }
-    
-    const historical = historicalMessages.slice().reverse();
-    const historicalIds = new Set(historical.map(m => m.id));
-    const uniqueNewMessages = newMessages.filter(m => !historicalIds.has(m.id));
-    const combined = [...historical, ...uniqueNewMessages];
-    
-    // console.log('📨 Messages combined:', { 
-    //   historical: historical.length, 
-    //   new: uniqueNewMessages.length, 
-    //   total: combined.length,
-    //   roomId: selectedRoomId
-    // });
-    
-    return combined;
-  }, [historicalMessages, newMessages, selectedRoomId]);
-
-  // Scroll observer for loading older messages
-  const messagesObserverRef = useRef<IntersectionObserver | null>(null);
-  const loadingOlderMessagesRef = useRef(false);
-  const prevMessagesLengthRef = useRef(0);
-  
-  const firstMessageRef = useCallback((node: HTMLDivElement | null) => {
-    if (messagesObserverRef.current) {
-      messagesObserverRef.current.disconnect();
-      messagesObserverRef.current = null;
-    }
-    
-    if (node && !isMessagesLoading && !isMessagesFetching && hasMoreMessages) {
-      messagesObserverRef.current = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting && hasMoreMessages && !loadingOlderMessagesRef.current) {
-          loadingOlderMessagesRef.current = true;
-          const container = messagesContainerRef.current;
-          const oldScrollHeight = container?.scrollHeight || 0;
-          
-          fetchNextMessagesPage().then(() => {
-            // Maintain scroll position after loading older messages
-            requestAnimationFrame(() => {
-              if (container) {
-                const newScrollHeight = container.scrollHeight;
-                container.scrollTop = newScrollHeight - oldScrollHeight;
-              }
-              loadingOlderMessagesRef.current = false;
-            });
-          });
-        }
-      });
-      
-      messagesObserverRef.current.observe(node);
-    }
-  }, [isMessagesLoading, isMessagesFetching, hasMoreMessages, fetchNextMessagesPage]);
+  }, [supabase]);
 
   // Load user email
   useEffect(() => {
@@ -199,13 +100,13 @@ export default function InboxPage() {
       }
     };
     loadUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
-  // Sync rooms from query to liveRooms state
+  // Load rooms on mount
   useEffect(() => {
-    setLiveRooms(rooms);
-  }, [rooms]);
+    loadRooms();
+  }, [loadRooms]);
+
 
   // Load widget
   useEffect(() => {
@@ -232,16 +133,16 @@ export default function InboxPage() {
           const oldRoom = payload.old as Partial<Room> | null;
           const roomId = oldRoom?.id || updatedRoom?.id;
           
-          // Update liveRooms optimistically
+          // Update rooms optimistically
           if (payload.eventType === 'INSERT' && updatedRoom) {
-            setLiveRooms(prev => {
+            setRooms(prev => {
               // Check if already exists
               if (prev.some(r => r.id === updatedRoom.id)) return prev;
               // Add at beginning (most recent)
               return [updatedRoom, ...prev];
             });
           } else if (payload.eventType === 'UPDATE' && updatedRoom) {
-            setLiveRooms(prev => {
+            setRooms(prev => {
               const index = prev.findIndex(r => r.id === updatedRoom.id);
               if (index === -1) {
                 // Room not in list, add it
@@ -266,7 +167,7 @@ export default function InboxPage() {
               setSelectedRoom(updatedRoom);
             }
           } else if (payload.eventType === 'DELETE' && roomId) {
-            setLiveRooms(prev => prev.filter(r => r.id !== roomId));
+            setRooms(prev => prev.filter(r => r.id !== roomId));
             
             // Clear selection if deleted room was selected
             if (selectedRoom?.id === roomId) {
@@ -285,7 +186,7 @@ export default function InboxPage() {
 
   // Filter rooms
   useEffect(() => {
-    let filtered = liveRooms;
+    let filtered = rooms;
     
     // Status filter
     if (statusFilter !== 'all') {
@@ -302,7 +203,7 @@ export default function InboxPage() {
     }
     
     setFilteredRooms(filtered);
-  }, [liveRooms, searchQuery, statusFilter]);
+  }, [rooms, searchQuery, statusFilter]);
 
   // Monitor selectedRoomId changes (disabled for performance)
   // useEffect(() => {
@@ -316,16 +217,14 @@ export default function InboxPage() {
   // Handle room selection
   useEffect(() => {
     if (selectedRoom) {
-      // CRITICAL: Update ref IMMEDIATELY (synchronous) before any async operations
       currentRoomIdRef.current = selectedRoom.id;
-      
-      // Clear ALL room-specific states FIRST
-      setNewMessages([]);
-      setInputValue(''); // Clear input to avoid sending to wrong room
-      // Reset message count for scroll behavior
-      prevMessagesLengthRef.current = 0;
-      // Then update the roomId which will trigger query reset
       setSelectedRoomId(selectedRoom.id);
+      setInputValue('');
+      
+      // Load messages
+      loadMessages(selectedRoom.id);
+      
+      // Mark as read
       markAsRead(selectedRoom.id);
       
       // Subscribe to new messages
@@ -337,12 +236,10 @@ export default function InboxPage() {
     } else {
       currentRoomIdRef.current = null;
       setSelectedRoomId(null);
-      setNewMessages([]);
-      setInputValue(''); // Clear input when no room selected
-      prevMessagesLengthRef.current = 0;
+      setMessages([]);
+      setInputValue('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoom?.id]);
+  }, [selectedRoom?.id, loadMessages]);
 
   // Scroll to bottom when messages change or room changes
   useEffect(() => {
@@ -350,32 +247,15 @@ export default function InboxPage() {
     if (selectedRoomId && selectedRoomId === currentRoomIdRef.current && messages.length > 0 && !isMessagesLoading) {
       const container = messagesContainerRef.current;
       if (container) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-        const isInitialLoad = prevMessagesLengthRef.current === 0;
-        
-        // Auto-scroll if: initial load OR user is already near bottom OR new messages arrived
-        if (isInitialLoad || isNearBottom || messages.length > prevMessagesLengthRef.current) {
-          requestAnimationFrame(() => {
-            // Double-check room hasn't changed
-            if (container && selectedRoomId === currentRoomIdRef.current) {
-              container.scrollTop = container.scrollHeight;
-            }
-          });
-        }
-        
-        prevMessagesLengthRef.current = messages.length;
+        requestAnimationFrame(() => {
+          if (container && selectedRoomId === currentRoomIdRef.current) {
+            container.scrollTop = container.scrollHeight;
+          }
+        });
       }
     }
   }, [selectedRoomId, messages.length, isMessagesLoading]);
 
-  // Cleanup observer when room changes or component unmounts
-  useEffect(() => {
-    return () => {
-      if (messagesObserverRef.current) {
-        messagesObserverRef.current.disconnect();
-      }
-    };
-  }, [selectedRoomId]);
 
 
   const loadWidget = useCallback(async () => {
@@ -402,6 +282,7 @@ export default function InboxPage() {
   }, [widgetId, supabase, router]);
 
   const subscribeToMessages = useCallback((roomId: string) => {
+    console.log('📡 Subscribing to messages for room:', roomId);
     const channel = supabase
       .channel(`room-messages-${roomId}`)
       .on(
@@ -422,7 +303,7 @@ export default function InboxPage() {
           }
           
           // Only add if not already in the list (prevent duplicates)
-          setNewMessages((prev) => {
+          setMessages((prev) => {
             // Double-check room hasn't changed while setState was queued
             if (currentRoomIdRef.current !== roomId) return prev;
             
@@ -463,7 +344,7 @@ export default function InboxPage() {
       }
       
       // Atualização otimista - UI primeiro
-      setLiveRooms(prev => 
+      setRooms(prev => 
         prev.map(r => r.id === roomId ? { ...r, unread_count: 0 } : r)
       );
       
@@ -496,7 +377,7 @@ export default function InboxPage() {
   const handleRoomClick = useCallback((room: Room) => {
     // Atualização otimista IMEDIATA do badge
     if (room.unread_count > 0) {
-      setLiveRooms(prev => 
+      setRooms(prev => 
         prev.map(r => r.id === room.id ? { ...r, unread_count: 0 } : r)
       );
     }
@@ -509,7 +390,7 @@ export default function InboxPage() {
   const handleMessagesAreaClick = useCallback(() => {
     if (selectedRoom && selectedRoom.unread_count > 0) {
       // Atualização otimista
-      setLiveRooms(prev => 
+      setRooms(prev => 
         prev.map(r => r.id === selectedRoom.id ? { ...r, unread_count: 0 } : r)
       );
       
@@ -753,9 +634,9 @@ export default function InboxPage() {
     );
   }
 
-  const openCount = liveRooms.filter(r => r.status === 'open').length;
-  const closedCount = liveRooms.filter(r => r.status === 'closed').length;
-  const totalUnread = liveRooms.reduce((sum, r) => sum + (r.unread_count || 0), 0);
+  const openCount = rooms.filter(r => r.status === 'open').length;
+  const closedCount = rooms.filter(r => r.status === 'closed').length;
+  const totalUnread = rooms.reduce((sum, r) => sum + (r.unread_count || 0), 0);
 
   return (
     <DashboardLayout
@@ -858,7 +739,7 @@ export default function InboxPage() {
                     {filteredRooms.map((room, index) => (
                       <button
                         key={room.id}
-                        ref={index === filteredRooms.length - 1 ? lastRoomRef : null}
+                        // No ref needed - no infinite scroll
                         onClick={() => handleRoomClick(room)}
                         className={`w-full p-3 sm:p-4 text-left hover:bg-accent transition-all duration-200 ease-in-out ${
                           selectedRoom?.id === room.id ? 'bg-accent' : ''
@@ -936,11 +817,6 @@ export default function InboxPage() {
                       </button>
                     ))}
                   </div>
-                  {isRoomsFetching && (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin text-primary" />
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -1047,11 +923,6 @@ export default function InboxPage() {
                   </>
                 ) : (
                   <>
-                    {isMessagesFetching && hasMoreMessages && (
-                      <div className="flex justify-center py-2">
-                        <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin text-primary" />
-                      </div>
-                    )}
                     {messages.map((message, index) => {
                   const isAgent = message.sender_type === 'agent';
                   const isSystem = message.message_type === 'system';
@@ -1059,8 +930,7 @@ export default function InboxPage() {
                   if (isSystem) {
                     return (
                       <div 
-                        key={message.id} 
-                        ref={index === 0 ? firstMessageRef : null}
+                        key={message.id}
                         className="flex justify-center"
                       >
                         <div className="bg-muted text-muted-foreground px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm max-w-md text-center">
@@ -1073,7 +943,6 @@ export default function InboxPage() {
                   return (
                     <div
                       key={message.id}
-                      ref={index === 0 ? firstMessageRef : null}
                       className={`flex gap-2 sm:gap-3 ${isAgent ? 'flex-row-reverse' : ''}`}
                     >
                       <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
