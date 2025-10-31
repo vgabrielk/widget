@@ -133,7 +133,7 @@ export async function PATCH(
     }
 
     // Validate updates (only allow certain fields)
-    const allowedFields = ['name', 'brand_color', 'position', 'welcome_message', 'is_active'];
+    const allowedFields = ['name', 'brand_color', 'position', 'welcome_message', 'is_active', 'icon_name', 'company_name', 'domains'];
     const filteredUpdates: Record<string, any> = {};
     
     for (const field of allowedFields) {

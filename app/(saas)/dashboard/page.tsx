@@ -54,7 +54,7 @@ export default async function DashboardPage() {
       title="Dashboard"
       description="Visão geral das suas atividades e estatísticas"
     >
-      <div className="space-y-6">
+      <div className="space-y-6 pb-8 sm:pb-12">
         {/* Subscription Banner */}
         {subscription && subscription.status === 'trialing' && (
           <Card className="border-2 border-primary bg-primary/5">
@@ -273,24 +273,6 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <Link href="/dashboard/widgets/new" className="group">
-            <Card className="card-clean hover:border-primary transition-all cursor-pointer h-full">
-              <CardHeader className="p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 group-hover:bg-primary group-hover:text-white transition-all">
-                    <Plus className="h-5 w-5 text-primary group-hover:text-white" />
-                  </div>
-                  <CardTitle className="text-base sm:text-lg">Criar Widget</CardTitle>
-                </div>
-                <CardDescription className="text-xs sm:text-sm">
-                  Configure um novo widget para seu site
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        </div>
       </div>
     </DashboardLayout>
   );

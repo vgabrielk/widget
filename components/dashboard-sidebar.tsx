@@ -19,6 +19,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { JelloLogoCompact } from '@/components/jello-logo';
 import { useUser } from '@/lib/contexts/user-context';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface SidebarProps {
   email?: string;
@@ -75,7 +76,7 @@ const settingsNavItems: NavItem[] = [
 
 export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) {
   const pathname = usePathname();
-  const { profile } = useUser();
+  const { profile, loading: userLoading } = useUser();
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -98,7 +99,7 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
   };
 
   return (
-    <aside className="flex h-full w-full flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))]">
+    <aside className="flex h-full w-full flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))] overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>
       {/* Logo */}
       <div className="flex h-16 sm:h-20 items-center justify-center border-b border-[hsl(var(--sidebar-border))] px-3 sm:px-4 py-4 sm:py-5">
         <Link href="/dashboard" className="flex items-center">
@@ -160,24 +161,34 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
 
       {/* User Profile */}
       <div className="border-t border-[hsl(var(--sidebar-border))] p-4">
-        <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-muted/50 transition-colors">
-          <Avatar className="h-10 w-10 border-2 border-primary">
-            {profile?.avatar_url && (
-              <AvatarImage src={profile.avatar_url} alt={profile.full_name || email || 'User'} />
-            )}
-            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-              {email ? getInitials(email) : 'U'}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium truncate">
-              {profile?.full_name || email?.split('@')[0] || 'User'}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {email || 'user@example.com'}
-            </p>
+        {userLoading || !email ? (
+          <div className="flex items-center gap-3 rounded-lg p-3">
+            <Skeleton className="h-10 w-10 rounded-full flex-shrink-0" />
+            <div className="flex-1 overflow-hidden min-w-0 space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-32" />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-muted/50 transition-colors">
+            <Avatar className="h-10 w-10 shadow-sm flex-shrink-0">
+              {profile?.avatar_url && (
+                <AvatarImage src={profile.avatar_url} alt={profile.full_name || email || 'User'} />
+              )}
+              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                {email ? getInitials(email) : 'U'}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 overflow-hidden min-w-0" style={{ maxWidth: 'calc(100% - 52px)' }}>
+              <p className="text-sm font-medium truncate block">
+                {profile?.full_name || email?.split('@')[0] || 'User'}
+              </p>
+              <p className="text-xs text-muted-foreground truncate block" title={email}>
+                {email}
+              </p>
+            </div>
+          </div>
+        )}
         
         {onLogout && (
           <Button

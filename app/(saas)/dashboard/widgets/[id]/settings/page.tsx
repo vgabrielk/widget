@@ -24,7 +24,12 @@ import {
   Trash2,
   Plus,
   MessageSquare,
-  Mail
+  Mail,
+  MessageCircle,
+  Headphones,
+  HelpCircle,
+  Bot,
+  Heart
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -42,6 +47,7 @@ export default function WidgetSettingsPage() {
   const [isActive, setIsActive] = useState(true);
   const [domains, setDomains] = useState<string[]>([]);
   const [newDomain, setNewDomain] = useState('');
+  const [selectedIcon, setSelectedIcon] = useState<string>('MessageSquare');
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -78,6 +84,7 @@ export default function WidgetSettingsPage() {
       setCompanyName(data.company_name || '');
       setIsActive(data.is_active);
       setDomains(data.domains || []);
+      setSelectedIcon(data.icon_name || 'MessageSquare');
     } catch (error) {
       console.error('Error loading widget:', error);
       router.push('/dashboard');
@@ -129,6 +136,7 @@ export default function WidgetSettingsPage() {
           company_name: companyName || null,
           is_active: isActive,
           domains: domains.length > 0 ? domains : null,
+          icon_name: selectedIcon,
         }),
       });
 
@@ -148,16 +156,15 @@ export default function WidgetSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [widgetId, name, brandColor, position, welcomeMessage, companyName, isActive, domains, showError]);
+  }, [widgetId, name, brandColor, position, welcomeMessage, companyName, isActive, domains, selectedIcon, showError]);
 
   const embedCode = widget ? `<!-- ChatWidget -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   window.ChatWidgetConfig = {
     publicKey: '${widget.public_key}',
   };
 </script>
-<script src="${window.location.origin}/widget.js"></script>` : '';
+<script src="/widget.js"></script>` : '';
 
   const copyEmbedCode = useCallback(() => {
     navigator.clipboard.writeText(embedCode);
@@ -405,6 +412,44 @@ export default function WidgetSettingsPage() {
                 </select>
               </div>
 
+              {/* Ícone do Widget */}
+              <div className="space-y-2">
+                <Label>Ícone do Widget</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[
+                    { name: 'MessageSquare', icon: MessageSquare, label: 'Mensagem' },
+                    { name: 'MessageCircle', icon: MessageCircle, label: 'Círculo' },
+                    { name: 'Headphones', icon: Headphones, label: 'Suporte' },
+                    { name: 'HelpCircle', icon: HelpCircle, label: 'Ajuda' },
+                    { name: 'Bot', icon: Bot, label: 'Bot' },
+                  ].map(({ name: iconName, icon: Icon, label }) => (
+                    <button
+                      key={iconName}
+                      type="button"
+                      onClick={() => setSelectedIcon(iconName)}
+                      className={`relative flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all hover:border-primary/50 ${
+                        selectedIcon === iconName
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border bg-background'
+                      }`}
+                      title={label}
+                    >
+                      <Icon 
+                        className={`h-6 w-6 ${
+                          selectedIcon === iconName ? 'text-primary' : 'text-muted-foreground'
+                        }`}
+                      />
+                      {selectedIcon === iconName && (
+                        <Check className="absolute top-1 right-1 h-4 w-4 text-primary" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Escolha o ícone que aparecerá no botão do widget
+                </p>
+              </div>
+
               {/* Preview */}
               <div className="space-y-2">
                 <Label>Preview</Label>
@@ -416,7 +461,11 @@ export default function WidgetSettingsPage() {
                       [position === 'bottom-right' ? 'right' : 'left']: '16px'
                     }}
                   >
-                    <MessageSquare className="h-6 w-6 text-white" />
+                    {selectedIcon === 'MessageSquare' && <MessageSquare className="h-6 w-6 text-white" />}
+                    {selectedIcon === 'MessageCircle' && <MessageCircle className="h-6 w-6 text-white" />}
+                    {selectedIcon === 'Headphones' && <Headphones className="h-6 w-6 text-white" />}
+                    {selectedIcon === 'HelpCircle' && <HelpCircle className="h-6 w-6 text-white" />}
+                    {selectedIcon === 'Bot' && <Bot className="h-6 w-6 text-white" />}
                   </div>
                 </div>
               </div>

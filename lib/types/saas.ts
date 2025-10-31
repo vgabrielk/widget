@@ -39,6 +39,7 @@ export interface Widget {
   welcome_message: string;
   company_name: string | null;
   avatar_url: string | null;
+  icon_name?: string;
   
   // Settings
   is_active: boolean;

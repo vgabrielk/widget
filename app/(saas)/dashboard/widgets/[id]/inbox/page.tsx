@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client';
 import { Room, Message, Widget } from '@/lib/types/saas';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -828,11 +829,10 @@ export default function InboxPage() {
 
 
 
-  // Handler para clique na conversa - garante visualização
+  // Handler para clique na conversa - navegar para rota dinâmica
   const handleRoomClick = useCallback((room: Room) => {
-    // Selecionar a room
-    setSelectedRoom(room);
-  }, []);
+    router.push(`/dashboard/widgets/${widgetId}/inbox/${room.id}`);
+  }, [router, widgetId]);
 
   // Handler para clique na área de mensagens
   const handleMessagesAreaClick = useCallback(() => {
@@ -1125,7 +1125,7 @@ export default function InboxPage() {
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
-      <div className={`${selectedRoom ? '-m-3 sm:-m-6 lg:m-0 lg:-p-3 lg:-p-6' : ''} ${selectedRoom ? 'lg:h-[calc(100vh-140px)]' : ''}`}>
+      <div className="h-full overflow-hidden -m-3 sm:-m-6 lg:-m-6 lg:-mb-8 flex flex-col" style={{ height: '100%', maxHeight: '100%' }}>
       <style jsx>{`
         @keyframes fadeIn {
           from {
@@ -1140,10 +1140,10 @@ export default function InboxPage() {
       `}</style>
       {/* Mobile: Fullscreen chat when room selected, otherwise show conversations */}
       {/* Desktop: Split view */}
-      <div className={`flex flex-col lg:flex-row ${selectedRoom ? 'h-[calc(100vh-140px)]' : 'h-full'} gap-3 sm:gap-6 overflow-hidden ${selectedRoom ? 'lg:overflow-hidden' : ''} relative`}>
+      <div className={`flex flex-col lg:flex-row flex-1 min-h-0 gap-3 sm:gap-6 overflow-hidden`}>
         {/* Sidebar - Lista de Conversas - Desktop always visible, Mobile in Sheet */}
         {/* Desktop Sidebar */}
-        <div className="hidden lg:flex w-[380px] flex-col gap-3 sm:gap-4">
+        <div className="hidden lg:flex w-[380px] flex-shrink-0 flex-col gap-3 sm:gap-4 min-h-0" style={{ width: '380px', minWidth: '380px', maxWidth: '380px' }}>
           {/* Stats Cards */}
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <Card className="p-2 sm:p-3 transition-all duration-200">
@@ -1201,8 +1201,8 @@ export default function InboxPage() {
           </Card>
 
           {/* Conversations List */}
-          <Card className="flex-1 overflow-hidden">
-            <div className="h-full overflow-y-auto">
+          <Card className="flex-1 overflow-hidden min-h-0 flex flex-col">
+            <div className="flex-1 overflow-y-auto min-h-0">
               {isRoomsLoading ? (
                 <div className="divide-y">
                   {[...Array(5)].map((_, i) => (
@@ -1222,11 +1222,10 @@ export default function InboxPage() {
                 <>
                   <div className="divide-y">
                     {filteredRooms.map((room, index) => (
-                      <button
+                      <Link
                         key={room.id}
-                        // No ref needed - no infinite scroll
-                        onClick={() => handleRoomClick(room)}
-                        className={`w-full p-3 sm:p-4 text-left hover:bg-accent transition-all duration-200 ease-in-out ${
+                        href={`/dashboard/widgets/${widgetId}/inbox/${room.id}`}
+                        className={`w-full p-3 sm:p-4 text-left hover:bg-accent transition-all duration-200 ease-in-out block ${
                           selectedRoom?.id === room.id ? 'bg-accent' : ''
                         }`}
                         style={{
@@ -1294,7 +1293,7 @@ export default function InboxPage() {
                             </div>
                           </div>
                         </div>
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 </>
@@ -1372,7 +1371,7 @@ export default function InboxPage() {
               </div>
 
               {/* Conversations List */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto min-h-0">
                 {isRoomsLoading ? (
                   <div className="divide-y">
                     {[...Array(5)].map((_, i) => (
@@ -1469,8 +1468,8 @@ export default function InboxPage() {
         {/* Main Chat Area - Mobile: Fullscreen when room selected, Desktop: Split */}
         {/* Mobile: Show conversations list when no room selected */}
         {!selectedRoom && (
-          <div className="lg:hidden flex-1 flex flex-col">
-            <Card className="flex-1 flex flex-col overflow-hidden">
+          <div className="lg:hidden flex-1 flex flex-col min-h-0">
+            <Card className="flex-1 flex flex-col overflow-hidden min-h-0">
               {/* Mobile Conversations Header */}
               <div className="p-4 border-b flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
@@ -1537,7 +1536,7 @@ export default function InboxPage() {
               </div>
 
               {/* Conversations List */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto min-h-0">
                 {isRoomsLoading ? (
                   <div className="divide-y">
                     {[...Array(5)].map((_, i) => (
@@ -1556,10 +1555,11 @@ export default function InboxPage() {
                 ) : (
                   <div className="divide-y">
                     {filteredRooms.map((room) => (
-                      <button
+                      <Link
                         key={room.id}
-                        onClick={() => handleRoomClick(room)}
-                        className="w-full p-4 text-left hover:bg-accent transition-colors"
+                        href={`/dashboard/widgets/${widgetId}/inbox/${room.id}`}
+                        className="w-full p-4 text-left hover:bg-accent transition-colors block"
+                        onClick={() => setIsConversationsMenuOpen(false)}
                       >
                         <div className="flex gap-3">
                           <Avatar className="h-10 w-10 flex-shrink-0">
@@ -1617,7 +1617,7 @@ export default function InboxPage() {
                             </div>
                           </div>
                         </div>
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -1626,11 +1626,11 @@ export default function InboxPage() {
           </div>
         )}
 
-        {/* Chat Area - Mobile: Fullscreen, Desktop: Split */}
+        {/* Desktop: Empty state quando nenhuma sala selecionada */}
         {/* Mobile: Fixed fullscreen overlay, Desktop: Relative in layout */}
-        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: selectedRoom ? '100vh' : undefined }}>
+        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: selectedRoom ? 'padding-bottom:max(12px, env(safe-area-inset-bottom))' : undefined }}>
           {selectedRoom ? (
-            <Card className="flex-1 flex flex-col overflow-hidden min-h-0 h-full border-0 lg:border rounded-none lg:rounded-lg shadow-none lg:shadow">
+            <Card className="flex-1 flex flex-col min-h-0 h-full max-h-full border-0 lg:border rounded-none lg:rounded-lg shadow-none lg:shadow" style={{ display: 'flex', flexDirection: 'column' }}>
               {/* Chat Header - Fixed */}
               <div className="flex items-center justify-between p-4 border-b bg-background flex-shrink-0 z-10">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1748,7 +1748,9 @@ export default function InboxPage() {
                 onClick={handleMessagesAreaClick}
                 style={{
                   WebkitOverflowScrolling: 'touch',
-                  overscrollBehavior: 'contain'
+                  overscrollBehavior: 'contain',
+                  flex: '1 1 auto',
+                  overflowY: 'auto'
                 }}
               >
                 {isMessagesLoading ? (
@@ -1841,7 +1843,12 @@ export default function InboxPage() {
               </div>
 
               {/* Input - Fixed at bottom */}
-              <div className="p-3 sm:p-4 pb-safe border-t bg-background flex-shrink-0 z-10 relative" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+              <div className="p-3 sm:p-4 pb-safe border-t bg-background z-20 w-full" style={{ 
+                paddingBottom: 'max(24px, calc(env(safe-area-inset-bottom) + 12px))',
+                flexShrink: 0,
+                flexGrow: 0,
+                minHeight: 'auto'
+              }}>
                 {selectedRoom.status === 'closed' ? (
                   <div className="text-center py-3 sm:py-4 text-muted-foreground">
                     <p className="text-xs sm:text-sm">Esta conversa está fechada. Reabra para continuar.</p>

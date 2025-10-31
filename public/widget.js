@@ -607,7 +607,13 @@
 
         // Initialize Supabase client
         // SECURITY: This uses the PUBLIC anon key. RLS policies MUST be configured!
-        supabaseClient = supabase.createClient(
+        // Use window.supabase which was loaded dynamically, or fallback to global supabase
+        const supabaseLib = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
+        if (!supabaseLib) {
+            console.error('ChatWidget: Supabase library not available');
+            return;
+        }
+        supabaseClient = supabaseLib.createClient(
             supabaseConfig.url,
             supabaseConfig.key || supabaseConfig.anonKey
         );
@@ -1584,10 +1590,64 @@
         cleanupSubscriptions();
     }
 
-    // Check if Supabase library is loaded
-    if (typeof supabase === 'undefined') {
-        console.error('ChatWidget: Supabase library not loaded. Include <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> before widget.js');
-        return;
+    // Load Supabase library dynamically if not already loaded
+    function loadSupabaseLibrary() {
+        return new Promise((resolve, reject) => {
+            // Check if Supabase is already loaded (could be from window.supabase or module)
+            let supabaseLib = null;
+            
+            // Check various ways Supabase might be available
+            if (typeof window.supabase !== 'undefined') {
+                supabaseLib = window.supabase;
+            } else if (typeof supabase !== 'undefined') {
+                supabaseLib = supabase;
+            }
+            
+            if (supabaseLib && typeof supabaseLib.createClient === 'function') {
+                resolve(supabaseLib);
+                return;
+            }
+
+            // Check if script is already being loaded
+            if (document.querySelector('script[data-supabase-widget-loader]')) {
+                const checkInterval = setInterval(() => {
+                    if (typeof window.supabase !== 'undefined') {
+                        clearInterval(checkInterval);
+                        resolve(window.supabase);
+                    } else if (typeof supabase !== 'undefined') {
+                        clearInterval(checkInterval);
+                        resolve(supabase);
+                    }
+                }, 50);
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    reject(new Error('Timeout loading Supabase library'));
+                }, 10000);
+                return;
+            }
+
+            // Load Supabase from CDN
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+            script.setAttribute('data-supabase-widget-loader', 'true');
+            script.async = true;
+            
+            script.onload = () => {
+                // Check again after script loads
+                const loadedSupabase = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
+                if (loadedSupabase && typeof loadedSupabase.createClient === 'function') {
+                    resolve(loadedSupabase);
+                } else {
+                    reject(new Error('Supabase library loaded but createClient not available'));
+                }
+            };
+            
+            script.onerror = () => {
+                reject(new Error('Failed to load Supabase library from CDN'));
+            };
+            
+            document.head.appendChild(script);
+        });
     }
 
     // Initialize
@@ -1598,27 +1658,37 @@
         return;
     }
 
-    console.log('ChatWidget: Fetching config from:', `${API_BASE}/api/widget/${publicKey}`);
-    
-    // Timeout de 10 segundos para carregar configuração
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    fetch(`${API_BASE}/api/widget/${publicKey}`, { signal: controller.signal })
-        .then(res => {
-            clearTimeout(timeoutId);
-            console.log('ChatWidget: Response status:', res.status);
-            if (!res.ok) throw new Error(`Widget not found (${res.status})`);
-            return res.json();
-        })
-        .then(config => {
-            console.log('ChatWidget: Config loaded:', config);
-            initWidget(config.widget, config.supabase);
+    // Load Supabase library first, then fetch widget config
+    loadSupabaseLibrary()
+        .then((supabaseLib) => {
+            // Store supabase globally for use in initWidget (if not already in window)
+            if (typeof window.supabase === 'undefined') {
+                window.supabase = supabaseLib;
+            }
+            
+            console.log('ChatWidget: Fetching config from:', `${API_BASE}/api/widget/${publicKey}`);
+            
+            // Timeout de 10 segundos para carregar configuração
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            return fetch(`${API_BASE}/api/widget/${publicKey}`, { signal: controller.signal })
+                .then(res => {
+                    clearTimeout(timeoutId);
+                    console.log('ChatWidget: Response status:', res.status);
+                    if (!res.ok) throw new Error(`Widget not found (${res.status})`);
+                    return res.json();
+                })
+                .then(config => {
+                    console.log('ChatWidget: Config loaded:', config);
+                    initWidget(config.widget, config.supabase);
+                });
         })
         .catch(error => {
-            clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
                 console.error('ChatWidget: Timeout loading config - check your connection');
+            } else if (error.message && error.message.includes('Supabase')) {
+                console.error('ChatWidget: Failed to load Supabase library:', error.message);
             } else {
                 console.error('ChatWidget: Error loading widget config:', error);
             }

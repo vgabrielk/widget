@@ -46,7 +46,7 @@ export function DashboardLayout({
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block w-64 flex-shrink-0" style={{ width: '256px', minWidth: '256px', maxWidth: '256px' }}>
         <DashboardSidebar email={email} onLogout={handleLogout} />
       </div>
 
@@ -130,7 +130,7 @@ export function DashboardLayout({
         )}
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto min-h-0">
           <div className="p-3 sm:p-6 lg:p-8">
             {children}
           </div>
