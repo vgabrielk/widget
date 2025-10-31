@@ -108,6 +108,7 @@ export default function InboxPage() {
   // Load widget - usando ref para prevenir múltiplas cargas
   const widgetLoadInProgressRef = useRef(false);
   const loadedWidgetIdRef = useRef<string | null>(null);
+  const widgetAbortControllerRef = useRef<AbortController | null>(null);
   
   useEffect(() => {
     // ⚠️ CRITICAL: Only load widget if widgetId changed, not when widget state changes
@@ -129,12 +130,21 @@ export default function InboxPage() {
     widgetLoadInProgressRef.current = true;
     
     const load = async () => {
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 15000); // 15s timeout
+      widgetAbortControllerRef.current = abortController;
+      
       try {
         setIsWidgetLoading(true);
         console.log('📦 [Inbox] Loading widget:', widgetId);
         
         // Load widget via API route to avoid hanging query
-        const res = await fetch(`/api/widgets/${widgetId}`);
+        const res = await fetch(`/api/widgets/${widgetId}`, {
+          signal: abortController.signal,
+          cache: 'no-store' // Prevent caching issues
+        });
+        
+        clearTimeout(timeoutId);
         
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
@@ -148,8 +158,14 @@ export default function InboxPage() {
         setWidget(widgetData);
         setWidgetError(null);
       } catch (error: any) {
-        console.error('❌ [Inbox] Error loading widget:', error);
-        setWidgetError(error?.message || 'Erro ao carregar widget');
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          console.error('⏰ [Inbox] Widget loading timeout after 15s');
+          setWidgetError('Timeout ao carregar widget. Verifique sua conexão.');
+        } else {
+          console.error('❌ [Inbox] Error loading widget:', error);
+          setWidgetError(error?.message || 'Erro ao carregar widget');
+        }
         // Reset loadedWidgetIdRef on error to allow retry
         if (loadedWidgetIdRef.current === widgetId) {
           loadedWidgetIdRef.current = null;
@@ -158,10 +174,19 @@ export default function InboxPage() {
         console.log('✅ [Inbox] Setting isWidgetLoading to false');
         setIsWidgetLoading(false);
         widgetLoadInProgressRef.current = false;
+        widgetAbortControllerRef.current = null;
       }
     };
     
     load();
+    
+    // Cleanup: abort pending requests on unmount or widgetId change
+    return () => {
+      if (widgetAbortControllerRef.current) {
+        widgetAbortControllerRef.current.abort();
+        widgetAbortControllerRef.current = null;
+      }
+    };
     // ⚠️ CRITICAL: Only depend on widgetId, not widget?.id or supabase
     // widget?.id changes after loading, which would trigger reload
     // supabase is memoized, so it's stable, but we don't need it here
@@ -199,8 +224,16 @@ export default function InboxPage() {
       setIsRoomsLoading(true);
       
       // Load via API route (server-side, avoids client query hanging)
-      fetch(`/api/widgets/${widgetId}/rooms`)
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 15000); // 15s timeout
+      loadRoomsAbortControllerRef.current = abortController;
+      
+      fetch(`/api/widgets/${widgetId}/rooms`, { 
+        signal: abortController.signal,
+        cache: 'no-store' // Prevent caching issues
+      })
         .then(res => {
+          clearTimeout(timeoutId);
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}: ${res.statusText}`);
           }
@@ -215,12 +248,28 @@ export default function InboxPage() {
           console.log('✅ [Inbox] Loading flags reset');
         })
         .catch((err) => {
-          console.error('❌ [Inbox] Error loading rooms via API:', err);
+          clearTimeout(timeoutId);
+          if (err.name === 'AbortError') {
+            console.error('⏰ [Inbox] Rooms loading timeout after 15s');
+          } else {
+            console.error('❌ [Inbox] Error loading rooms via API:', err);
+          }
           roomsLoadedRef.current = false; // Allow retry
           setIsRoomsLoading(false);
           roomsLoadingRef.current = false;
+        })
+        .finally(() => {
+          loadRoomsAbortControllerRef.current = null;
         });
     }
+    
+    // Cleanup: abort pending requests on unmount or widgetId change
+    return () => {
+      if (loadRoomsAbortControllerRef.current) {
+        loadRoomsAbortControllerRef.current.abort();
+        loadRoomsAbortControllerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetId]);
 

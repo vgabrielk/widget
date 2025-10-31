@@ -307,7 +307,7 @@ export default async function DashboardPage() {
             </Card>
           </Link>
 
-          <Link href="/demo" className="group">
+          <Link href="/realtime-demo" className="group">
             <Card className="card-clean hover:border-primary transition-all cursor-pointer h-full">
               <CardHeader className="p-4 sm:p-6">
                 <div className="flex items-center gap-3 mb-2">
