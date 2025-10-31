@@ -132,40 +132,6 @@ export default async function DocsPage() {
             </CardContent>
           </Card>
 
-          {/* Real-time */}
-          <Card className="card-clean">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-                  <Zap className="h-5 w-5 text-green-600" />
-                </div>
-                <div>
-                  <CardTitle>Tempo Real</CardTitle>
-                  <CardDescription>Chat em tempo real</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-3">
-                O ChatWidget usa Supabase Realtime para mensagens instantâneas:
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  Mensagens entregues instantaneamente
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  Indicador de online/offline
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  Notificações automáticas
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
           {/* Security */}
           <Card className="card-clean">
             <CardHeader>

@@ -65,11 +65,6 @@ export default async function Home() {
               <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
           </Button>
-          <Button size="lg" variant="outline" asChild className="text-lg h-14 px-8">
-            <Link href="/realtime-demo">
-              Ver Demo
-            </Link>
-          </Button>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-muted-foreground">
@@ -107,7 +102,7 @@ export default async function Home() {
               </div>
               <CardTitle>Mensagens em Tempo Real</CardTitle>
               <CardDescription>
-                Converse com seus visitantes instantaneamente usando Supabase Realtime. Zero latência, 100% confiável.
+                Converse com seus visitantes instantaneamente. Zero latência, 100% confiável.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -167,7 +162,7 @@ export default async function Home() {
               </div>
               <CardTitle>Seguro e Confiável</CardTitle>
               <CardDescription>
-                Construído com Supabase. Seus dados estão seguros e protegidos com RLS.
+                 Seus dados estão seguros e protegidos com RLS.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -202,17 +197,6 @@ export default async function Home() {
           <p className="text-sm text-muted-foreground text-center">
             © 2025 ChatWidget. Powered by Supabase.
           </p>
-          <div className="flex flex-wrap justify-center gap-6">
-            <Button variant="link" asChild className="h-auto p-0">
-              <Link href="/setup-saas">Setup</Link>
-            </Button>
-            <Button variant="link" asChild className="h-auto p-0">
-              <Link href="/realtime-demo">Demo</Link>
-            </Button>
-            <Button variant="link" asChild className="h-auto p-0">
-              <Link href="/comparison">Comparação</Link>
-            </Button>
-          </div>
         </div>
       </footer>
     </div>

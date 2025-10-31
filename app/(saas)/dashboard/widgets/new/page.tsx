@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 export default function NewWidgetPage() {
   const [name, setName] = useState('');
-  const [brandColor, setBrandColor] = useState('#6366f1');
+  const [brandColor, setBrandColor] = useState('#0BC3DF');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
   const [welcomeMessage, setWelcomeMessage] = useState('Olá! Como posso ajudar você hoje?');
   const [companyName, setCompanyName] = useState('');

@@ -27,7 +27,7 @@ type WidgetStore = {
 const defaultConfig: WidgetConfig = {
   id: null,
   name: null,
-  brandColor: '#6366f1',
+  brandColor: '#0BC3DF',
   position: 'bottom-right',
   welcomeMessage: 'Olá! Como posso ajudar você hoje?',
   companyName: null,

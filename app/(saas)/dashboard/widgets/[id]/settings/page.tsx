@@ -40,7 +40,7 @@ export default function WidgetSettingsPage() {
   
   const [widget, setWidget] = useState<Widget | null>(null);
   const [name, setName] = useState('');
-  const [brandColor, setBrandColor] = useState('#6366f1');
+  const [brandColor, setBrandColor] = useState('#0BC3DF');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -390,7 +390,7 @@ export default function WidgetSettingsPage() {
                     id="color"
                     value={brandColor}
                     onChange={(e) => setBrandColor(e.target.value)}
-                    placeholder="#6366f1"
+                    placeholder="#0BC3DF"
                     className="flex-1"
                   />
                 </div>
