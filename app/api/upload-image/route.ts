@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
 
     const { data: room, error: roomError } = await supabase
       .from('rooms')
-      .select('id, status, widget_id, widgets:widget_id(domains)')
+      .select('id, status, widget_id, visitor_id, widgets:widget_id(domains)')
       .eq('id', roomId)
       .single();
 
@@ -165,6 +165,26 @@ export async function POST(request: NextRequest) {
         { error: 'Cannot upload to closed conversation' },
         { status: 403, headers: getCorsHeaders(origin) }
       );
+    }
+
+    // Check if visitor is banned
+    if (room.visitor_id) {
+      const { data: visitor, error: visitorError } = await supabase
+        .from('visitors')
+        .select('banned, ban_reason')
+        .eq('visitor_id', room.visitor_id)
+        .single();
+
+      if (!visitorError && visitor?.banned) {
+        return NextResponse.json(
+          {
+            error: 'Visitor is banned',
+            banned: true,
+            reason: visitor.ban_reason || 'No reason provided',
+          },
+          { status: 403, headers: getCorsHeaders(origin) }
+        );
+      }
     }
 
     // CSRF Protection: Verify origin matches widget's allowed domains

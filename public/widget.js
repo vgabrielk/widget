@@ -40,6 +40,7 @@
     let roomId = null;
     let roomStatus = null;
     let visitorId = null;
+    let isBanned = false;
     let visitorInfo = { name: '', email: '' };
     let messageChannel = null;
     let roomStatusChannel = null;
@@ -834,8 +835,37 @@
 
     async function checkForActiveRoom() {
         if (!roomId) return;
+        
+        // Check if visitor is banned before checking for active room
+        if (isBanned) {
+            console.warn('ChatWidget: Visitor is banned, clearing room');
+            roomId = null;
+            roomStatus = null;
+            localStorage.removeItem(STORAGE_KEYS.ROOM_ID);
+            return;
+        }
 
         try {
+            // First check if visitor is banned
+            const banCheckResponse = await fetch(`${API_BASE}/api/visitor/track?visitor_id=${encodeURIComponent(visitorId)}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (banCheckResponse.ok) {
+                const banCheckData = await banCheckResponse.json();
+                if (banCheckData.banned) {
+                    isBanned = true;
+                    disableWidgetForBannedUser(banCheckData.reason || 'Acesso negado');
+                    roomId = null;
+                    roomStatus = null;
+                    localStorage.removeItem(STORAGE_KEYS.ROOM_ID);
+                    return;
+                }
+            }
+
             const { data: existingRoom } = await supabaseClient
                 .from('rooms')
                 .select('*')
@@ -925,6 +955,13 @@
             visitorEmail: visitorInfo.email
         });
 
+            // Check if visitor is banned before initializing
+            if (isBanned) {
+                console.warn('ChatWidget: Attempt to initialize room while banned');
+                disableWidgetForBannedUser('Acesso negado');
+                return;
+            }
+
             try {
                 // Use API route to initialize or get existing room
                 const response = await fetch(`${API_BASE}/api/visitor/rooms`, {
@@ -943,6 +980,12 @@
                 });
 
                 if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    if (errorData.banned || response.status === 403) {
+                        isBanned = true;
+                        disableWidgetForBannedUser(errorData.reason || 'Acesso negado');
+                        return;
+                    }
                     const error = await response.text();
                     throw new Error(error);
                 }
@@ -966,6 +1009,37 @@
 
         async function startNewConversation() {
             console.log('ChatWidget: Starting new conversation...');
+            
+            // Check if visitor is banned before starting new conversation
+            if (isBanned) {
+                console.warn('ChatWidget: Attempt to start new conversation while banned');
+                disableWidgetForBannedUser('Acesso negado');
+                showError('Você não pode iniciar uma nova conversa. Acesso negado.');
+                return;
+            }
+
+            // Check ban status before creating new room
+            try {
+                const banCheckResponse = await fetch(`${API_BASE}/api/visitor/track?visitor_id=${encodeURIComponent(visitorId)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (banCheckResponse.ok) {
+                    const banCheckData = await banCheckResponse.json();
+                    if (banCheckData.banned) {
+                        isBanned = true;
+                        disableWidgetForBannedUser(banCheckData.reason || 'Acesso negado');
+                        showError('Você não pode iniciar uma nova conversa. Acesso negado.');
+                        return;
+                    }
+                }
+            } catch (banCheckError) {
+                console.error('ChatWidget: Error checking ban status:', banCheckError);
+                // Continue anyway, API will catch it
+            }
             
             try {
                 // Limpar subscriptions antigas
@@ -1009,6 +1083,11 @@
                 // Criar nova sala (initializeRoom busca apenas salas com status 'open', então criará uma nova)
                 await initializeRoom();
                 
+                // If banned after initializeRoom, stop here
+                if (isBanned) {
+                    return;
+                }
+                
                 // Atualizar UI após nova sala ser criada
                 updateClosedNotice();
                 
@@ -1027,12 +1106,19 @@
                 console.log('ChatWidget: New conversation started successfully');
             } catch (error) {
                 console.error('ChatWidget: Error starting new conversation:', error);
+                // Check if error is due to ban
+                if (isBanned) {
+                    return;
+                }
                 showError('Erro ao iniciar nova conversa. Por favor, tente novamente.');
                 throw error; // Re-throw para o handler de erro restaurar o botão
             }
         }
 
         async function loadMessages() {
+            // Check if banned before loading messages
+            if (isBanned || !roomId) return;
+            
             try {
                 // Use API route to load messages
                 const response = await fetch(`${API_BASE}/api/visitor/rooms/${roomId}/messages`, {
@@ -1185,6 +1271,13 @@
     }
 
     async function sendMessage() {
+        // Check if visitor is banned
+        if (isBanned) {
+            console.warn('ChatWidget: Attempt to send message while banned');
+            showError('Você não pode enviar mensagens. Acesso negado.');
+            return;
+        }
+
         const input = document.getElementById('chat-widget-input');
         const content = input?.value?.trim();
 
@@ -1209,6 +1302,11 @@
         if (!roomId) {
             console.log('ChatWidget: No room ID, initializing room...');
             await initializeRoom();
+            
+            // If banned after initializeRoom, stop here
+            if (isBanned) {
+                return;
+            }
             
             // Se ainda não tem room após inicializar, abortar
             if (!roomId) {
@@ -1242,11 +1340,18 @@
 
                     clearTimeout(timeoutId);
 
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('ChatWidget: Upload failed:', errorText);
-                        throw new Error('Failed to upload image');
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    if (errorData.banned || response.status === 403) {
+                        isBanned = true;
+                        disableWidgetForBannedUser(errorData.reason || 'Acesso negado');
+                        showError('Você não pode enviar mensagens. Acesso negado.');
+                        return;
                     }
+                    const errorText = await response.text();
+                    console.error('ChatWidget: Upload failed:', errorText);
+                    throw new Error('Failed to upload image');
+                }
                     
                     const result = await response.json();
                     imageUrl = result.imageUrl;  // API retorna 'imageUrl', não 'url'
@@ -1289,6 +1394,13 @@
             });
 
             if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                if (errorData.banned || response.status === 403) {
+                    isBanned = true;
+                    disableWidgetForBannedUser(errorData.reason || 'Acesso negado');
+                    showError('Você não pode enviar mensagens. Acesso negado.');
+                    return;
+                }
                 const error = await response.text();
                 throw new Error(error);
             }
@@ -1855,6 +1967,7 @@
                 const checkData = await checkResponse.json();
                 if (checkData.banned) {
                     console.warn('ChatWidget: Visitor is banned:', checkData.reason);
+                    isBanned = true;
                     // Disable widget for banned users
                     disableWidgetForBannedUser(checkData.reason);
                     return false;
@@ -1883,14 +1996,17 @@
                 const trackData = await trackResponse.json();
                 if (trackData.banned) {
                     console.warn('ChatWidget: Visitor is banned:', trackData.reason);
+                    isBanned = true;
                     disableWidgetForBannedUser(trackData.reason);
                     return false;
                 }
                 console.log('ChatWidget: Visitor tracked successfully');
+                isBanned = false; // Ensure flag is cleared if not banned
                 return true;
             } else {
-                const errorData = await trackResponse.json();
+                const errorData = await trackResponse.json().catch(() => ({}));
                 if (errorData.banned) {
+                    isBanned = true;
                     disableWidgetForBannedUser(errorData.reason || 'Access denied');
                     return false;
                 }
@@ -1906,6 +2022,7 @@
 
     // Disable widget for banned users
     function disableWidgetForBannedUser(reason) {
+        isBanned = true;
         const container = document.getElementById('chat-widget-container');
         const button = document.getElementById('chat-widget-button');
         const chatWindow = document.getElementById('chat-widget-window');
@@ -1919,6 +2036,13 @@
         if (chatWindow) {
             chatWindow.style.display = 'none';
         }
+        
+        // Clear room ID to prevent any further actions
+        roomId = null;
+        localStorage.removeItem(STORAGE_KEYS.ROOM_ID);
+        
+        // Cleanup subscriptions
+        cleanupSubscriptions();
         
         console.warn('ChatWidget: Widget disabled - Visitor is banned. Reason:', reason);
     }
