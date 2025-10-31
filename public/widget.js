@@ -272,11 +272,44 @@
                 background: #FEE2E2;
                 border: 1px solid #FECACA;
                 color: #991B1B;
-                padding: 10px;
+                padding: 12px;
                 border-radius: 8px;
                 margin-bottom: 12px;
                 text-align: center;
-                font-size: 12px;
+                font-size: 13px;
+            }
+
+            #chat-widget-new-conversation-btn {
+                background: ${brandColor};
+                color: white;
+                border: none;
+                padding: 12px 20px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                width: 100%;
+                margin-top: 12px;
+                transition: background-color 0.2s, transform 0.1s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+
+            #chat-widget-new-conversation-btn:hover {
+                background: ${brandColor}dd;
+                transform: translateY(-1px);
+            }
+
+            #chat-widget-new-conversation-btn:active {
+                transform: translateY(0);
+            }
+
+            #chat-widget-new-conversation-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
             }
 
             #chat-widget-image-preview {
@@ -924,6 +957,74 @@
             }
         }
 
+        async function startNewConversation() {
+            console.log('ChatWidget: Starting new conversation...');
+            
+            try {
+                // Limpar subscriptions antigas
+                if (messageChannel) {
+                    supabaseClient.removeChannel(messageChannel);
+                    messageChannel = null;
+                }
+                
+                if (roomStatusChannel) {
+                    supabaseClient.removeChannel(roomStatusChannel);
+                    roomStatusChannel = null;
+                }
+                
+                // Limpar mensagens da UI
+                const messagesContainer = document.getElementById('chat-widget-messages');
+                if (messagesContainer) {
+                    messagesContainer.innerHTML = '';
+                }
+                
+                // Limpar input e imagem selecionada
+                const input = document.getElementById('chat-widget-input');
+                if (input) {
+                    input.value = '';
+                }
+                selectedImage = null;
+                const preview = document.getElementById('chat-widget-image-preview');
+                if (preview) preview.style.display = 'none';
+                const fileInput = document.getElementById('chat-widget-file-input');
+                if (fileInput) fileInput.value = '';
+                
+                // Resetar variáveis de estado da sala antiga
+                roomId = null;
+                roomStatus = null;
+                
+                // Remover room_id do localStorage para forçar criação de nova sala
+                localStorage.removeItem(STORAGE_KEYS.ROOM_ID);
+                
+                // Parar heartbeat da sala antiga
+                stopHeartbeat();
+                
+                // Criar nova sala (initializeRoom busca apenas salas com status 'open', então criará uma nova)
+                await initializeRoom();
+                
+                // Atualizar UI após nova sala ser criada
+                updateClosedNotice();
+                
+                // Restaurar texto do botão (caso ainda esteja visível)
+                const newConversationBtn = document.getElementById('chat-widget-new-conversation-btn');
+                if (newConversationBtn) {
+                    newConversationBtn.disabled = false;
+                    newConversationBtn.innerHTML = `
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14M5 12h14"></path>
+                        </svg>
+                        Iniciar nova conversa
+                    `;
+                }
+                
+                console.log('ChatWidget: New conversation started successfully');
+            } catch (error) {
+                console.error('ChatWidget: Error starting new conversation:', error);
+                showError('Erro ao iniciar nova conversa. Por favor, tente novamente.');
+                throw error; // Re-throw para o handler de erro restaurar o botão
+            }
+        }
+
         async function loadMessages() {
             try {
                 // Use API route to load messages
@@ -1012,12 +1113,22 @@
         const input = document.getElementById('chat-widget-input');
         const sendBtn = document.getElementById('chat-widget-send');
         const attachBtn2 = document.getElementById('chat-widget-attach-btn-2');
+        const newConversationBtn = document.getElementById('chat-widget-new-conversation-btn');
 
         if (roomStatus === 'closed') {
             console.log('ChatWidget: Room is closed, disabling inputs');
             
-            // Mostrar aviso visual
+            // Mostrar aviso visual e botão de nova conversa
             if (notice) notice.style.display = 'block';
+            
+            // Verificar se há mensagens sendo digitadas ou pendentes para habilitar/desabilitar botão
+            const hasInputText = input && input.value.trim().length > 0;
+            const hasSelectedImage = selectedImage !== null;
+            
+            // Desabilitar botão apenas se houver texto digitado ou imagem selecionada
+            if (newConversationBtn) {
+                newConversationBtn.disabled = hasInputText || hasSelectedImage;
+            }
             
             // Desabilitar todos os inputs
             if (input) {
@@ -1041,7 +1152,7 @@
         } else {
             console.log('ChatWidget: Room is open, enabling inputs');
             
-            // Esconder aviso
+            // Esconder aviso e botão
             if (notice) notice.style.display = 'none';
             
             // Reabilitar inputs
@@ -1413,7 +1524,13 @@
                     <!-- Input Area -->
                     <div class="chat-widget-input-area">
                         <div id="chat-widget-closed-notice" style="display: none;">
-                            🔒 This conversation has been closed
+                            🔒 Esta conversa foi encerrada pelo suporte.
+                            <button id="chat-widget-new-conversation-btn" type="button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 5v14M5 12h14"></path>
+                                </svg>
+                                Iniciar nova conversa
+                            </button>
                         </div>
 
                         <div id="chat-widget-image-preview" style="display: none;">
@@ -1536,6 +1653,10 @@
                     reader.onload = (e) => {
                             previewImg.src = e.target.result;
                             preview.style.display = 'block';
+                            // Atualizar estado do botão se a conversa estiver fechada
+                            if (roomStatus === 'closed') {
+                                updateClosedNotice();
+                            }
                     };
                     reader.readAsDataURL(file);
                     }
@@ -1550,6 +1671,38 @@
                 const preview = document.getElementById('chat-widget-image-preview');
                 if (preview) preview.style.display = 'none';
                 if (fileInput) fileInput.value = '';
+                // Atualizar estado do botão de nova conversa se estiver visível
+                updateClosedNotice();
+            });
+        }
+
+        // Adicionar listener para o botão de nova conversa
+        const newConversationBtn = document.getElementById('chat-widget-new-conversation-btn');
+        if (newConversationBtn) {
+            newConversationBtn.addEventListener('click', async () => {
+                // Desabilitar botão durante o processo
+                const originalText = newConversationBtn.innerHTML;
+                newConversationBtn.disabled = true;
+                newConversationBtn.innerHTML = '<span>Iniciando...</span>';
+                
+                try {
+                    await startNewConversation();
+                    // Botão será atualizado pela updateClosedNotice quando nova sala for criada
+                } catch (error) {
+                    // Restaurar botão em caso de erro
+                    newConversationBtn.disabled = false;
+                    newConversationBtn.innerHTML = originalText;
+                }
+            });
+        }
+
+        // Monitorar mudanças no input para atualizar estado do botão
+        if (input) {
+            input.addEventListener('input', () => {
+                // Atualizar estado do botão se a conversa estiver fechada
+                if (roomStatus === 'closed') {
+                    updateClosedNotice();
+                }
             });
         }
 

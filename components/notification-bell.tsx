@@ -37,6 +37,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -46,6 +47,8 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   });
 
   const previousUnreadCountRef = useRef(0);
+  const preservedNotificationsRef = useRef<Notification[]>([]);
+  const markAsReadRef = useRef(false);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -60,6 +63,19 @@ export function NotificationBell({ userId }: NotificationBellProps) {
       const data = await res.json();
       const newNotifications = data.notifications || [];
       const newUnreadCount = data.unreadCount || 0;
+      
+      // If we just marked as read and API returns empty, preserve existing notifications
+      if (markAsReadRef.current && newNotifications.length === 0 && preservedNotificationsRef.current.length > 0) {
+        // Keep preserved notifications visible but mark them as read
+        setNotifications(preservedNotificationsRef.current.map(notif => ({ ...notif, is_read: true })));
+        setUnreadCount(newUnreadCount);
+        return;
+      }
+      
+      // Store notifications for preservation if needed
+      if (newNotifications.length > 0) {
+        preservedNotificationsRef.current = newNotifications;
+      }
       
       // Show browser notification if unread count increased
       if (previousUnreadCountRef.current < newUnreadCount && newNotifications.length > 0) {
@@ -82,12 +98,12 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [notifications.length]);
 
   // Debounce loadNotifications to prevent excessive calls
   const loadingNotificationsRef = useRef(false);
   const loadNotificationsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const DEBOUNCE_DELAY = 500; // 500ms debounce for UI updates
+  const DEBOUNCE_DELAY = 200; // 200ms debounce for UI updates (reduced for faster response)
   
   const debouncedLoadNotifications = useCallback(async () => {
     // Clear existing timeout
@@ -95,16 +111,18 @@ export function NotificationBell({ userId }: NotificationBellProps) {
       clearTimeout(loadNotificationsTimeoutRef.current);
     }
     
-    // Skip if already loading
-    if (loadingNotificationsRef.current) {
-      // Schedule for after current load finishes
-      loadNotificationsTimeoutRef.current = setTimeout(() => {
-        debouncedLoadNotifications();
-      }, DEBOUNCE_DELAY);
+    // If not loading, load immediately (for real-time responsiveness)
+    if (!loadingNotificationsRef.current) {
+      loadingNotificationsRef.current = true;
+      try {
+        await loadNotifications();
+      } finally {
+        loadingNotificationsRef.current = false;
+      }
       return;
     }
     
-    // Schedule load with debounce
+    // If already loading, schedule for after current load finishes
     loadNotificationsTimeoutRef.current = setTimeout(async () => {
       if (loadingNotificationsRef.current) return;
       
@@ -128,25 +146,43 @@ export function NotificationBell({ userId }: NotificationBellProps) {
       subscriptionChannelRef.current = null;
     }
 
+    if (!userId) {
+      console.warn('⚠️ [Notifications] No userId, skipping subscription');
+      return;
+    }
+
     // Get user's widget IDs via API
     fetch('/api/user/widgets', {
       credentials: 'include',
     })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to fetch widgets');
+        }
+        return res.json();
+      })
       .then(({ widgets }) => {
-        if (!widgets || widgets.length === 0) return;
+        if (!widgets || widgets.length === 0) {
+          console.warn('⚠️ [Notifications] No widgets found for user');
+          return;
+        }
         
         const widgetIds = widgets.map((w: { id: string }) => w.id);
         userWidgetIdsRef.current = new Set(widgetIds);
         
+        console.log('📡 [Notifications] Setting up Realtime subscriptions for widgets:', widgetIds);
+        
         // Create channel for real-time updates (only subscriptions, no queries)
         const channel = supabase
-          .channel(`notifications-${userId}`, {
+          .channel(`notifications-${userId}-${Date.now()}`, {
             config: {
               broadcast: { self: false },
             },
           })
-          // Subscribe to new messages (for notifications)
+        // Subscribe to new messages from visitors
+        // Note: messages table doesn't have widget_id, only room_id
+        // We filter by sender_type and let the API filter by user's widgets
+        channel
           .on(
             'postgres_changes',
             {
@@ -157,9 +193,9 @@ export function NotificationBell({ userId }: NotificationBellProps) {
             },
             async (payload) => {
               const newMessage = payload.new as any;
+              console.log('🔔 [Notifications] New message received via Realtime:', newMessage);
               
-              // Update notifications (this will check if room belongs to user's widgets via API)
-              // The API will only return notifications for user's widgets, so it's safe to update
+              // Update notifications immediately (API will only return notifications for user's widgets)
               debouncedLoadNotifications();
             }
           );
@@ -182,6 +218,11 @@ export function NotificationBell({ userId }: NotificationBellProps) {
                 
                 // Only update if unread_count changed
                 if (oldRoom?.unread_count !== updatedRoom?.unread_count) {
+                  console.log('🔔 [Notifications] Room unread_count changed via Realtime:', {
+                    widgetId,
+                    old: oldRoom?.unread_count,
+                    new: updatedRoom?.unread_count
+                  });
                   debouncedLoadNotifications();
                 }
               }
@@ -191,9 +232,11 @@ export function NotificationBell({ userId }: NotificationBellProps) {
         channel
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-              console.log('🔔 [Notifications] Subscribed to messages and rooms for real-time notifications');
+              console.log('✅ [Notifications] Subscribed to messages and rooms for real-time notifications');
             } else if (status === 'CHANNEL_ERROR') {
               console.error('❌ [Notifications] Channel error:', status);
+            } else {
+              console.log('⚠️ [Notifications] Channel status:', status);
             }
           });
 
@@ -278,8 +321,49 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     requestNotificationPermission();
   }, []);
 
+  // Mark all as read when dropdown opens (remove badge but keep notifications visible)
+  const handleDropdownOpenChange = useCallback(async (open: boolean) => {
+    setIsDropdownOpen(open);
+    
+    // When dropdown opens and there are unread notifications, mark them as read
+    if (open && unreadCount > 0) {
+      // Preserve current notifications before marking as read
+      setNotifications(prev => {
+        preservedNotificationsRef.current = prev;
+        return prev.map(notif => ({ ...notif, is_read: true }));
+      });
+      
+      // Prevent reload from clearing notifications
+      markAsReadRef.current = true;
+      
+      try {
+        const res = await fetch('/api/user/notifications/read-all', {
+          method: 'PATCH',
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          // Remove badge (unreadCount = 0) but keep notifications visible
+          setUnreadCount(0);
+          restoreTitle();
+          
+          // Clear the flag after a delay to allow normal reloading
+          setTimeout(() => {
+            markAsReadRef.current = false;
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Error marking notifications as read:', error);
+        markAsReadRef.current = false;
+      }
+    } else if (!open) {
+      // Reset flag when dropdown closes
+      markAsReadRef.current = false;
+    }
+  }, [unreadCount, restoreTitle]);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={isDropdownOpen} onOpenChange={handleDropdownOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative h-9 w-9 sm:h-10 sm:w-10">
           <Bell className="h-4 w-4 sm:h-5 sm:w-5" />

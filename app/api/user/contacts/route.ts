@@ -32,11 +32,16 @@ export async function GET(request: Request) {
     const widgetIds = widgets?.map(w => w.id) || [];
 
     if (widgetIds.length === 0) {
-      return NextResponse.json({ contacts: [] });
+      return NextResponse.json({ contacts: [], count: 0 });
     }
 
-    // Load contacts (rooms with emails) from all user's widgets
-    const { data: contacts, error: contactsError } = await supabase
+    // Get pagination parameters from query string
+    const { searchParams } = new URL(request.url);
+    const from = parseInt(searchParams.get('from') || '0', 10);
+    const to = parseInt(searchParams.get('to') || '19', 10);
+
+    // Load all contacts first to get unique ones, then paginate
+    const { data: allContacts, error: contactsError } = await supabase
       .from('rooms')
       .select('visitor_name, visitor_email, created_at, widget_id')
       .in('widget_id', widgetIds)
@@ -52,15 +57,30 @@ export async function GET(request: Request) {
     }
 
     // Remove duplicates by email (keep most recent)
-    const uniqueContacts = contacts?.reduce((acc: any[], contact) => {
+    const uniqueContacts = allContacts?.reduce((acc: any[], contact) => {
       const existing = acc.find(c => c.visitor_email === contact.visitor_email);
       if (!existing) {
-        acc.push(contact);
+        acc.push({
+          ...contact,
+          id: contact.visitor_email, // Use email as ID for unique contacts
+        });
       }
       return acc;
     }, []) || [];
 
-    return NextResponse.json({ contacts: uniqueContacts });
+    // Sort by most recent first
+    uniqueContacts.sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    // Paginate the unique contacts
+    const paginatedContacts = uniqueContacts.slice(from, to + 1);
+    const count = uniqueContacts.length;
+
+    return NextResponse.json({ 
+      contacts: paginatedContacts,
+      count 
+    });
   } catch (error: any) {
     console.error('Error in user contacts API:', error);
     return NextResponse.json(

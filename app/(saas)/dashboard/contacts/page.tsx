@@ -1,58 +1,122 @@
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Users, Mail, MessageSquare, Calendar } from 'lucide-react';
+import { useUser } from '@/lib/contexts/user-context';
+import { useInfiniteQueryApi } from '@/lib/hooks/use-infinite-query-api';
+import { Skeleton } from '@/components/ui/skeleton';
 
-export default async function ContactsPage() {
-  const supabase = await createClient();
-  
+interface Contact {
+  id: string;
+  visitor_name: string | null;
+  visitor_email: string;
+  created_at: string;
+  widget_id: string;
+}
+
+export default function ContactsPage() {
+  const router = useRouter();
+  const { user, loading: userLoading } = useUser();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Use infinite query for contacts
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect('/auth/login');
-  }
-
-  // Get all unique visitors from all user's widgets
-  const { data: widgets } = await supabase
-    .from('widgets')
-    .select('id')
-    .eq('user_id', user.id);
-
-  const widgetIds = widgets?.map(w => w.id) || [];
-
-  const { data: rooms } = await supabase
-    .from('rooms')
-    .select('visitor_name, visitor_email, created_at, widget_id')
-    .in('widget_id', widgetIds)
-    .not('visitor_email', 'is', null)
-    .order('created_at', { ascending: false });
-
-  // Group by email to get unique contacts
-  const contactsMap = new Map();
-  rooms?.forEach((room: any) => {
-    if (room.visitor_email && !contactsMap.has(room.visitor_email)) {
-      contactsMap.set(room.visitor_email, {
-        email: room.visitor_email,
-        name: room.visitor_name,
-        firstContact: room.created_at,
-        conversationsCount: 1,
-      });
-    } else if (room.visitor_email) {
-      const contact = contactsMap.get(room.visitor_email);
-      contact.conversationsCount++;
-    }
+    data: contacts,
+    isLoading,
+    isFetching,
+    hasMore,
+    fetchNextPage,
+    count,
+  } = useInfiniteQueryApi<Contact>({
+    apiEndpoint: '/api/user/contacts',
+    pageSize: 10,
+    queryKey: 'contacts',
   });
 
-  const contacts = Array.from(contactsMap.values());
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current || !hasMore || isFetching || isLoading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isFetching) {
+          fetchNextPage();
+        }
+      },
+      {
+        rootMargin: '100px',
+      }
+    );
+
+    observer.observe(loadMoreRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, isFetching, isLoading, fetchNextPage]);
+
+  // Group contacts by email to count conversations
+  const contactsWithCount = contacts.reduce((acc: Map<string, { contact: Contact; count: number }>, contact) => {
+    const existing = acc.get(contact.visitor_email);
+    if (existing) {
+      existing.count++;
+    } else {
+      acc.set(contact.visitor_email, { contact, count: 1 });
+    }
+    return acc;
+  }, new Map());
+
+  const uniqueContacts = Array.from(contactsWithCount.values()).map(item => ({
+    ...item.contact,
+    conversationsCount: item.count,
+  }));
+
+  // Calculate total conversations count (total contacts loaded)
+  const totalConversations = contacts.length;
+  
+  // Total unique contacts from the API count
+  // Since the API returns unique contacts, count represents the total unique contacts
+  const totalUniqueContacts = count || uniqueContacts.length;
+
+  if (userLoading) {
+    return (
+      <DashboardLayout email="" title="Contatos" description="Carregando...">
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="pt-6">
+                  <Skeleton className="h-20 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout
-      email={user.email || ''}
+      email={user?.email || ''}
       title="Contatos"
       description="Visitantes que já conversaram com você"
     >
@@ -64,7 +128,7 @@ export default async function ContactsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total de Contatos</p>
-                  <p className="text-3xl font-bold">{contacts.length}</p>
+                  <p className="text-3xl font-bold">{totalUniqueContacts}</p>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                   <Users className="h-6 w-6 text-primary" />
@@ -78,7 +142,7 @@ export default async function ContactsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Conversas</p>
-                  <p className="text-3xl font-bold">{rooms?.length || 0}</p>
+                  <p className="text-3xl font-bold">{totalConversations}</p>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10">
                   <MessageSquare className="h-6 w-6 text-blue-600" />
@@ -93,7 +157,7 @@ export default async function ContactsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Média por Contato</p>
                   <p className="text-3xl font-bold">
-                    {contacts.length > 0 ? Math.round((rooms?.length || 0) / contacts.length) : 0}
+                    {totalUniqueContacts > 0 ? Math.round(totalConversations / totalUniqueContacts) : 0}
                   </p>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10">
@@ -113,7 +177,13 @@ export default async function ContactsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {contacts.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : uniqueContacts.length === 0 ? (
               <div className="text-center py-12">
                 <div className="flex justify-center mb-4">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
@@ -129,23 +199,23 @@ export default async function ContactsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {contacts.map((contact: any, index: number) => (
+                {uniqueContacts.map((contact: any, index: number) => (
                   <div
-                    key={index}
+                    key={contact.visitor_email}
                     className="flex items-center gap-4 p-4 rounded-lg border hover:border-primary/50 transition-all"
                   >
                     <Avatar className="h-12 w-12 border-2 border-primary">
                       <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                        {contact.name 
-                          ? contact.name.substring(0, 2).toUpperCase()
-                          : contact.email.substring(0, 2).toUpperCase()}
+                        {contact.visitor_name 
+                          ? contact.visitor_name.substring(0, 2).toUpperCase()
+                          : contact.visitor_email.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-semibold truncate">
-                          {contact.name || 'Visitante'}
+                          {contact.visitor_name || 'Visitante'}
                         </p>
                         <Badge variant="outline">
                           {contact.conversationsCount} {contact.conversationsCount === 1 ? 'conversa' : 'conversas'}
@@ -153,17 +223,36 @@ export default async function ContactsPage() {
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Mail className="h-3 w-3" />
-                        <p className="truncate">{contact.email}</p>
+                        <p className="truncate">{contact.visitor_email}</p>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                         <Calendar className="h-3 w-3" />
                         <p>
-                          Primeiro contato: {new Date(contact.firstContact).toLocaleDateString('pt-BR')}
+                          Primeiro contato: {new Date(contact.created_at).toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                     </div>
                   </div>
                 ))}
+                
+                {/* Load more trigger */}
+                <div ref={loadMoreRef} style={{ height: '1px' }} />
+                
+                {/* Loading skeleton */}
+                {isFetching && (
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-20 w-full" />
+                    ))}
+                  </div>
+                )}
+                
+                {/* End message */}
+                {!hasMore && uniqueContacts.length > 0 && (
+                  <div className="text-center py-4 text-sm text-muted-foreground">
+                    Você chegou ao fim da lista
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -172,4 +261,3 @@ export default async function ContactsPage() {
     </DashboardLayout>
   );
 }
-

@@ -9,7 +9,7 @@ import { DashboardLayout } from '@/components/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { 
   Send, 
@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useInboxStore } from '@/stores/useInboxStore';
 import { useAlertDialog } from '@/hooks/use-alert-dialog';
 import { useToast } from '@/components/ui/toast';
+import { useInfiniteQueryApi } from '@/lib/hooks/use-infinite-query-api';
 
 export default function InboxPage() {
   const params = useParams();
@@ -44,15 +45,28 @@ export default function InboxPage() {
   const { confirm, AlertDialogComponent } = useAlertDialog();
   const { error: showError, ToastContainer } = useToast();
   const [widget, setWidget] = useState<Widget | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [filteredRooms, setFilteredRooms] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [isWidgetLoading, setIsWidgetLoading] = useState(true);
-  const [isRoomsLoading, setIsRoomsLoading] = useState(false);
+  const loadMoreRoomsRef = useRef<HTMLDivElement>(null);
+
+  // Use infinite query for rooms
+  const {
+    data: rooms,
+    isLoading: isRoomsLoading,
+    isFetching: isRoomsFetching,
+    hasMore: hasMoreRooms,
+    fetchNextPage: fetchNextRoomsPage,
+    reset: resetRooms,
+    count: totalRoomsCount,
+  } = useInfiniteQueryApi<Room>({
+    apiEndpoint: `/api/widgets/${widgetId}/rooms`,
+    pageSize: 10,
+    queryKey: `rooms-${widgetId}`,
+  });
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [widgetError, setWidgetError] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -60,14 +74,17 @@ export default function InboxPage() {
   const messageChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const roomsChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const roomsLoadedRef = useRef(false);
-  const roomsLoadingRef = useRef(false); // Guard para prevenir múltiplas chamadas simultâneas
-  const loadRoomsAbortControllerRef = useRef<AbortController | null>(null);
   const lastRoomUpdateRef = useRef<{ [roomId: string]: number }>({});
   const selectedRoomRef = useRef<Room | null>(null);
   const previousWidgetIdRef = useRef<string | null>(null);
   const [isVisitorOnline, setIsVisitorOnline] = useState(false);
   const [isConversationsMenuOpen, setIsConversationsMenuOpen] = useState(false);
+  
+  // Local state for realtime updates (merged with infinite query data)
+  const [realtimeRooms, setRealtimeRooms] = useState<Map<string, Room>>(new Map());
+  
+  // Stats from API (total counts)
+  const [roomsStats, setRoomsStats] = useState<{ open: number; closed: number; unread: number } | null>(null);
   
   // Load widget - usando ref para prevenir múltiplas cargas
   // IMPORTANT: These refs must be defined before the useEffect that uses them
@@ -332,131 +349,51 @@ export default function InboxPage() {
     };
   }, [widgetId, user, userLoading, params.id]);
 
-  // Load initial rooms via API route (server-side, more reliable)
+  // Reset rooms when widgetId changes
   useEffect(() => {
-    const currentWidgetId = widgetId; // Capture widgetId at start of effect
-    const widgetIdChanged = previousWidgetIdRef.current !== widgetId;
-    
-    console.log('🔄 [Inbox] useEffect widgetId check:', { 
-      widgetId: currentWidgetId, 
-      previousWidgetId: previousWidgetIdRef.current,
-      widgetIdChanged,
-      roomsLoaded: roomsLoadedRef.current,
-      roomsLoading: roomsLoadingRef.current
-    });
-    
-    // Reset flags only if widgetId actually changed
-    if (widgetIdChanged && previousWidgetIdRef.current !== null) {
-      console.log('🔄 [Inbox] WidgetId changed, resetting flags');
-      // Abort pending room requests for old widgetId
-      if (loadRoomsAbortControllerRef.current) {
-        console.log('🚫 [Inbox] Aborting rooms request for old widgetId');
-        loadRoomsAbortControllerRef.current.abort();
-        loadRoomsAbortControllerRef.current = null;
-      }
-      roomsLoadedRef.current = false;
-      roomsLoadingRef.current = false;
-      setRooms([]);
+    if (previousWidgetIdRef.current !== widgetId && previousWidgetIdRef.current !== null) {
+      resetRooms();
+      setRealtimeRooms(new Map());
+      setRoomsStats(null); // Reset stats when widget changes
     }
-    
-    // Update previous widgetId
     previousWidgetIdRef.current = widgetId;
-    
-    // ⚠️ CRITICAL: Don't load until user is authenticated and loaded
-    if (userLoading || !user) {
-      console.log('⏸️ [Inbox] Waiting for user authentication before loading rooms', { userLoading, hasUser: !!user });
-      return;
+  }, [widgetId, resetRooms]);
+
+  // Fetch stats when widgetId is available
+  useEffect(() => {
+    if (widgetId && !roomsStats) {
+      fetch(`/api/widgets/${widgetId}/rooms?from=0&to=0`)
+        .then(res => res.json())
+        .then((data: { stats?: { open: number; closed: number; unread: number } }) => {
+          if (data.stats) {
+            setRoomsStats(data.stats);
+          }
+        })
+        .catch(err => console.error('Error loading rooms stats:', err));
     }
-    
-    // Only load if widgetId exists and we haven't loaded yet
-    if (currentWidgetId && !roomsLoadedRef.current && !roomsLoadingRef.current) {
-      console.log('🚀 [Inbox] Loading rooms via API for widgetId:', currentWidgetId);
-      roomsLoadedRef.current = true;
-      roomsLoadingRef.current = true;
-      setIsRoomsLoading(true);
-      
-      // Load via API route (server-side, avoids client query hanging)
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error('⏰ [Inbox] Rooms fetch timeout, aborting...');
-        abortController.abort();
-      }, 15000); // 15s timeout
-      loadRoomsAbortControllerRef.current = abortController;
-      
-      fetch(`/api/widgets/${currentWidgetId}/rooms?t=${Date.now()}`, { 
-        signal: abortController.signal,
-        cache: 'no-store', // Prevent caching issues
-        credentials: 'include' // CRITICAL: Include cookies for auth
-      })
-        .then(res => {
-          clearTimeout(timeoutId);
-          
-          // Verify widgetId hasn't changed during fetch
-          if (params.id !== currentWidgetId) {
-            console.log('⚠️ [Inbox] WidgetId changed during rooms fetch, ignoring response');
-            return;
-          }
-          
-          console.log('📡 [Inbox] Rooms fetch response:', res.status, res.statusText);
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          }
-          return res.json();
-        })
-        .then((data: { rooms: Room[] } | void) => {
-          // Verify widgetId hasn't changed before updating state
-          if (!data || params.id !== currentWidgetId) {
-            console.log('⚠️ [Inbox] WidgetId changed after rooms fetch, not updating state');
-            return;
-          }
-          
-          console.log('✅ [Inbox] Rooms loaded via API:', data.rooms.length);
-          setRooms(data.rooms || []);
-          console.log('✅ [Inbox] Setting isRoomsLoading to false');
-          setIsRoomsLoading(false);
-          roomsLoadingRef.current = false;
-          console.log('✅ [Inbox] Loading flags reset');
-        })
-        .catch((err) => {
-          clearTimeout(timeoutId);
-          
-          // Only handle error if widgetId hasn't changed
-          if (params.id !== currentWidgetId) {
-            console.log('⚠️ [Inbox] WidgetId changed during rooms fetch error, ignoring');
-            return;
-          }
-          
-          if (err.name === 'AbortError') {
-            console.error('⏰ [Inbox] Rooms loading timeout or aborted');
-            // Don't show error if it was aborted due to navigation
-            if (params.id === currentWidgetId) {
-              roomsLoadedRef.current = false; // Allow retry only if still same widgetId
-            }
-          } else {
-            console.error('❌ [Inbox] Error loading rooms via API:', err);
-            roomsLoadedRef.current = false; // Allow retry
-          }
-          setIsRoomsLoading(false);
-          roomsLoadingRef.current = false;
-        })
-        .finally(() => {
-          // Only clear abort controller if this request was for current widgetId
-          if (loadRoomsAbortControllerRef.current === abortController && params.id === currentWidgetId) {
-            loadRoomsAbortControllerRef.current = null;
-          }
-        });
-    }
-    
-    // Cleanup: abort pending requests ONLY if widgetId changed or component unmounting
-    return () => {
-      // Only abort if widgetId actually changed (not just pathname navigation to same widgetId)
-      if (loadRoomsAbortControllerRef.current && params.id !== currentWidgetId) {
-        console.log('🧹 [Inbox] Cleanup: aborting rooms request for different widgetId');
-        loadRoomsAbortControllerRef.current.abort();
-        loadRoomsAbortControllerRef.current = null;
+  }, [widgetId, roomsStats]);
+
+  // Infinite scroll observer for rooms
+  useEffect(() => {
+    if (!loadMoreRoomsRef.current || !hasMoreRooms || isRoomsFetching || isRoomsLoading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreRooms && !isRoomsFetching) {
+          fetchNextRoomsPage();
+        }
+      },
+      {
+        rootMargin: '100px',
       }
+    );
+
+    observer.observe(loadMoreRoomsRef.current);
+
+    return () => {
+      observer.disconnect();
     };
-  }, [widgetId, user, userLoading, params.id]);
+  }, [hasMoreRooms, isRoomsFetching, isRoomsLoading, fetchNextRoomsPage]);
 
   // Subscribe to rooms updates (realtime)
   useEffect(() => {
@@ -484,15 +421,16 @@ export default function InboxPage() {
           const oldRoom = payload.old as Partial<Room> | null;
           const roomId = oldRoom?.id || updatedRoom?.id;
           
-          // Update rooms optimistically
+          // Update realtime rooms state (merged with infinite query data)
           if (payload.eventType === 'INSERT' && updatedRoom) {
             console.log('➕ [Inbox] New room inserted:', updatedRoom.id);
-            setRooms(prev => {
-              // Check if already exists
-              if (prev.some(r => r.id === updatedRoom.id)) return prev;
-              // Add at beginning (most recent)
-              return [updatedRoom, ...prev];
+            setRealtimeRooms(prev => {
+              const newMap = new Map(prev);
+              newMap.set(updatedRoom.id, updatedRoom);
+              return newMap;
             });
+            // Reset infinite query to reload and include new room
+            resetRooms();
           } else if (payload.eventType === 'UPDATE' && updatedRoom) {
             console.log('🔄 [Inbox] Room updated:', updatedRoom.id, {
               oldLastMessage: oldRoom?.last_message_at,
@@ -510,47 +448,17 @@ export default function InboxPage() {
             }
             lastRoomUpdateRef.current[roomId] = now;
             
-            const oldRoomData = oldRoom as Room | undefined;
-            
-            // Ignore updates que foram causados por markAsRead (unread_count mudou para 0 mas não há mudança em last_message_at)
-            if (oldRoomData && 
-                oldRoomData.unread_count > 0 && 
-                updatedRoom.unread_count === 0 &&
-                oldRoomData.last_message_at === updatedRoom.last_message_at) {
-              // Este update foi causado por markAsRead, não por nova mensagem
-              // Apenas atualizar a lista mas não o selectedRoom para evitar loop
-              setRooms(prev => 
-                prev.map(r => r.id === roomId ? { ...r, unread_count: 0 } : r)
-              );
-              return;
-            }
-            
-            setRooms(prev => {
-              const index = prev.findIndex(r => r.id === updatedRoom.id);
-              if (index === -1) {
-                // Room not in list, add it
-                return [updatedRoom, ...prev];
-              }
-              // Update existing room and move to top if last_message_at changed
-              const newRooms = [...prev];
-              const oldRoom = newRooms[index];
-              newRooms[index] = updatedRoom;
-              
-              // If last_message_at changed, move to top
-              if (oldRoom.last_message_at !== updatedRoom.last_message_at) {
-                console.log('📤 [Inbox] Moving room to top (new message):', roomId);
-                newRooms.splice(index, 1);
-                newRooms.unshift(updatedRoom);
-              } else {
-                console.log('📝 [Inbox] Updating room in place:', roomId);
-              }
-              
-              return newRooms;
+            // Update realtime rooms state
+            setRealtimeRooms(prev => {
+              const newMap = new Map(prev);
+              newMap.set(updatedRoom.id, updatedRoom);
+              return newMap;
             });
             
             // Update selectedRoom only if significant fields changed (not just unread_count from markAsRead)
             // Usar ref para evitar closure stale
             const currentSelectedRoom = selectedRoomRef.current;
+            const oldRoomData = oldRoom as Room | undefined;
             if (currentSelectedRoom?.id === updatedRoom.id) {
               // Verificar se campos relevantes realmente mudaram
               const significantChange = 
@@ -565,7 +473,11 @@ export default function InboxPage() {
               }
             }
           } else if (payload.eventType === 'DELETE' && roomId) {
-            setRooms(prev => prev.filter(r => r.id !== roomId));
+            setRealtimeRooms(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(roomId);
+              return newMap;
+            });
             
             // Clear selection if deleted room was selected - usar ref
             const currentSelectedRoom = selectedRoomRef.current;
@@ -604,9 +516,31 @@ export default function InboxPage() {
     console.log('🔄 [Inbox] isRoomsLoading changed:', isRoomsLoading);
   }, [isRoomsLoading]);
 
+  // Merge infinite query rooms with realtime updates
+  const mergedRooms = useMemo(() => {
+    const roomsMap = new Map<string, Room>();
+    
+    // Add rooms from infinite query
+    rooms.forEach(room => {
+      roomsMap.set(room.id, room);
+    });
+    
+    // Override with realtime updates (these are most recent)
+    realtimeRooms.forEach((room, id) => {
+      roomsMap.set(id, room);
+    });
+    
+    // Convert back to array and sort by last_message_at
+    return Array.from(roomsMap.values()).sort((a, b) => {
+      const aTime = new Date(a.last_message_at || a.created_at).getTime();
+      const bTime = new Date(b.last_message_at || b.created_at).getTime();
+      return bTime - aTime;
+    });
+  }, [rooms, realtimeRooms]);
+
   // Filter rooms
-  useEffect(() => {
-    let filtered = rooms;
+  const filteredRooms = useMemo(() => {
+    let filtered = mergedRooms;
     
     // Status filter
     if (statusFilter !== 'all') {
@@ -622,9 +556,8 @@ export default function InboxPage() {
       );
     }
     
-    console.log('🔍 [Inbox] Filtered rooms:', filtered.length, 'from', rooms.length);
-    setFilteredRooms(filtered);
-  }, [rooms, searchQuery, statusFilter]);
+    return filtered;
+  }, [mergedRooms, searchQuery, statusFilter]);
 
   const subscribeToMessages = useCallback((roomId: string) => {
     if (messageChannelRef.current) {
@@ -1064,12 +997,12 @@ export default function InboxPage() {
       <DashboardLayout
         email={user?.email || ''}
         title="Carregando..."
-        description="Carregando widget"
+        description="Carregando conversas"
       >
         <div className="min-h-[calc(100vh-140px)] flex items-center justify-center bg-background">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-muted-foreground">Carregando widget...</p>
+            <p className="text-muted-foreground">Carregando conversas...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -1115,9 +1048,10 @@ export default function InboxPage() {
     );
   }
 
-  const openCount = rooms.filter(r => r.status === 'open').length;
-  const closedCount = rooms.filter(r => r.status === 'closed').length;
-  const totalUnread = rooms.reduce((sum, r) => sum + (r.unread_count || 0), 0);
+  // Use stats from API if available (total counts), otherwise use loaded rooms
+  const openCount = roomsStats?.open ?? mergedRooms.filter(r => r.status === 'open').length;
+  const closedCount = roomsStats?.closed ?? mergedRooms.filter(r => r.status === 'closed').length;
+  const totalUnread = roomsStats?.unread ?? mergedRooms.reduce((sum, r) => sum + (r.unread_count || 0), 0);
 
   return (
     <DashboardLayout
@@ -1125,7 +1059,7 @@ export default function InboxPage() {
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
-      <div className="overflow-hidden flex flex-col -m-3 sm:-m-6 lg:-m-6 lg:-mb-8" style={{ minHeight: 'calc(100vh - 180px)' }}>
+      <div className="space-y-6">
       <style jsx>{`
         @keyframes fadeIn {
           from {
@@ -1138,29 +1072,52 @@ export default function InboxPage() {
           }
         }
       `}</style>
-      {/* Mobile: Fullscreen chat when room selected, otherwise show conversations */}
-      {/* Desktop: Split view */}
-      <div className={`flex flex-col lg:flex-row flex-1 min-h-0 gap-3 sm:gap-6 overflow-hidden`}>
-        {/* Sidebar - Lista de Conversas - Desktop always visible, Mobile in Sheet */}
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:flex w-[380px] flex-shrink-0 flex-col gap-3 sm:gap-4 min-h-0" style={{ width: '380px', minWidth: '380px', maxWidth: '380px' }}>
-          {/* Stats Cards */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <Card className="p-2 sm:p-3 transition-all duration-200">
-              <div className="text-xl sm:text-2xl font-bold text-primary transition-all duration-300">{openCount}</div>
-              <div className="text-xs text-muted-foreground">Abertas</div>
-            </Card>
-            <Card className="p-2 sm:p-3 transition-all duration-200">
-              <div className="text-xl sm:text-2xl font-bold transition-all duration-300">{closedCount}</div>
-              <div className="text-xs text-muted-foreground">Fechadas</div>
-            </Card>
-            <Card className="p-2 sm:p-3 transition-all duration-200">
-              <div className="text-xl sm:text-2xl font-bold text-destructive transition-all duration-300">{totalUnread}</div>
-              <div className="text-xs text-muted-foreground">Não lidas</div>
-            </Card>
-          </div>
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="stat-card">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Abertas</p>
+                <p className="text-3xl font-bold text-primary">{openCount}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                <CheckCircle2 className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* Filters */}
+        <Card className="stat-card">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Fechadas</p>
+                <p className="text-3xl font-bold">{closedCount}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+                <X className="h-6 w-6 text-muted-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="stat-card">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Não lidas</p>
+                <p className="text-3xl font-bold text-destructive">{totalUnread}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/10">
+                <Mail className="h-6 w-6 text-destructive" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
           <Card className="p-3 sm:p-4 space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1200,9 +1157,10 @@ export default function InboxPage() {
             </div>
           </Card>
 
-          {/* Conversations List */}
-          <Card className="flex-1 overflow-hidden min-h-0 flex flex-col" style={{ maxHeight: 'calc(100vh - 380px)' }}>
-            <div className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: 'calc(100vh - 380px)' }}>
+      {/* Conversations List */}
+      <Card>
+        <CardContent className="p-0">
+          <div>
               {isRoomsLoading ? (
                 <div className="divide-y">
                   {[...Array(5)].map((_, i) => (
@@ -1296,11 +1254,30 @@ export default function InboxPage() {
                       </Link>
                     ))}
                   </div>
+                  
+                  {/* Load more trigger - Always render to allow infinite scroll */}
+                  <div ref={loadMoreRoomsRef} style={{ height: '1px' }} />
+                  
+                  {/* Loading skeleton */}
+                  {isRoomsFetching && (
+                    <div className="divide-y">
+                      {[...Array(3)].map((_, i) => (
+                        <RoomSkeleton key={`skeleton-desktop-${i}`} />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* End message */}
+                  {!hasMoreRooms && filteredRooms.length > 0 && (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      Você chegou ao fim da lista
+                    </div>
+                  )}
                 </>
               )}
-            </div>
-          </Card>
-        </div>
+          </div>
+        </CardContent>
+      </Card>
 
         {/* Mobile Conversations Menu Sheet */}
         <Sheet open={isConversationsMenuOpen} onOpenChange={setIsConversationsMenuOpen}>
@@ -1388,17 +1365,18 @@ export default function InboxPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="divide-y">
-                    {filteredRooms.map((room) => (
-                      <button
-                        key={room.id}
-                        onClick={() => {
-                          handleRoomClick(room);
-                          setIsConversationsMenuOpen(false);
-                        }}
-                        className={`w-full p-4 text-left hover:bg-accent transition-colors ${
-                          selectedRoom?.id === room.id ? 'bg-accent' : ''
-                        }`}
+                  <>
+                    <div className="divide-y">
+                      {filteredRooms.map((room) => (
+                        <button
+                          key={room.id}
+                          onClick={() => {
+                            handleRoomClick(room);
+                            setIsConversationsMenuOpen(false);
+                          }}
+                          className={`w-full p-4 text-left hover:bg-accent transition-colors ${
+                            selectedRoom?.id === room.id ? 'bg-accent' : ''
+                          }`}
                       >
                         <div className="flex gap-3">
                           <Avatar className="h-10 w-10 flex-shrink-0">
@@ -1458,178 +1436,37 @@ export default function InboxPage() {
                         </div>
                       </button>
                     ))}
-                  </div>
+                    </div>
+                    
+                    {/* Load more trigger */}
+                    <div ref={loadMoreRoomsRef} style={{ height: '1px' }} />
+                    
+                    {/* Loading skeleton */}
+                    {isRoomsFetching && (
+                      <div className="divide-y">
+                        {[...Array(3)].map((_, i) => (
+                          <RoomSkeleton key={`skeleton-mobile-${i}`} />
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* End message */}
+                    {!hasMoreRooms && filteredRooms.length > 0 && (
+                      <div className="text-center py-4 text-sm text-muted-foreground">
+                        Você chegou ao fim da lista
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           </SheetContent>
         </Sheet>
 
-        {/* Main Chat Area - Mobile: Fullscreen when room selected, Desktop: Split */}
-        {/* Mobile: Show conversations list when no room selected */}
-        {!selectedRoom && (
-          <div className="lg:hidden flex-1 flex flex-col min-h-0">
-            <Card className="flex-1 flex flex-col overflow-hidden min-h-0">
-              {/* Mobile Conversations Header */}
-              <div className="p-4 border-b flex-shrink-0">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-lg font-semibold">Conversas</h2>
-                    <p className="text-xs text-muted-foreground">Toque em uma conversa para abrir</p>
-                  </div>
-                </div>
-                
-                {/* Stats Cards */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  <Card className="p-2">
-                    <div className="text-xl font-bold text-primary">{openCount}</div>
-                    <div className="text-xs text-muted-foreground">Abertas</div>
-                  </Card>
-                  <Card className="p-2">
-                    <div className="text-xl font-bold">{closedCount}</div>
-                    <div className="text-xs text-muted-foreground">Fechadas</div>
-                  </Card>
-                  <Card className="p-2">
-                    <div className="text-xl font-bold text-destructive">{totalUnread}</div>
-                    <div className="text-xs text-muted-foreground">Não lidas</div>
-                  </Card>
-                </div>
 
-                {/* Search */}
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar conversas..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-9 text-sm"
-                  />
-                </div>
-                
-                {/* Filters */}
-                <div className="flex gap-2">
-                  <Button
-                    variant={statusFilter === 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('all')}
-                    className="flex-1 text-xs"
-                  >
-                    Todas
-                  </Button>
-                  <Button
-                    variant={statusFilter === 'open' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('open')}
-                    className="flex-1 text-xs"
-                  >
-                    Abertas
-                  </Button>
-                  <Button
-                    variant={statusFilter === 'closed' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('closed')}
-                    className="flex-1 text-xs"
-                  >
-                    Fechadas
-                  </Button>
-                </div>
-              </div>
-
-              {/* Conversations List */}
-              <div className="flex-1 overflow-y-auto min-h-0">
-                {isRoomsLoading ? (
-                  <div className="divide-y">
-                    {[...Array(5)].map((_, i) => (
-                      <RoomSkeleton key={i} />
-                    ))}
-                  </div>
-                ) : filteredRooms.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                      <Search className="w-6 h-6 text-muted-foreground" />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {searchQuery ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa ainda'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {filteredRooms.map((room) => (
-                      <Link
-                        key={room.id}
-                        href={`/dashboard/widgets/${widgetId}/inbox/${room.id}`}
-                        className="w-full p-4 text-left hover:bg-accent transition-colors block"
-                        onClick={() => setIsConversationsMenuOpen(false)}
-                      >
-                        <div className="flex gap-3">
-                          <Avatar className="h-10 w-10 flex-shrink-0">
-                            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                              {getInitials(room.visitor_name || 'Visitante')}
-                            </AvatarFallback>
-                          </Avatar>
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span className="font-semibold text-sm truncate">
-                                  {room.visitor_name || 'Visitante'}
-                                </span>
-                                {room.unread_count > 0 && (
-                                  <Badge variant="destructive" className="rounded-full h-5 min-w-[20px] flex items-center justify-center px-1.5 text-xs">
-                                    {room.unread_count}
-                                  </Badge>
-                                )}
-                              </div>
-                              <span className="text-xs text-muted-foreground flex-shrink-0">
-                                {formatTime(room.last_message_at || room.created_at)}
-                              </span>
-                            </div>
-                            
-                            {room.visitor_email && (
-                              <div className="flex items-center gap-1 mb-1">
-                                <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                <span className="text-xs text-muted-foreground truncate">
-                                  {room.visitor_email}
-                                </span>
-                              </div>
-                            )}
-                            
-                            {room.last_message_preview && (
-                              <p className="text-xs text-muted-foreground truncate mb-2">
-                                {room.last_message_preview}
-                              </p>
-                            )}
-                            
-                            <div className="flex items-center gap-2">
-                              <Badge variant={room.status === 'open' ? 'default' : 'secondary'} className="text-xs">
-                                {room.status === 'open' ? (
-                                  <>
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Aberta
-                                  </>
-                                ) : (
-                                  <>
-                                    <X className="h-3 w-3 mr-1" />
-                                    Fechada
-                                  </>
-                                )}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {/* Desktop: Empty state quando nenhuma sala selecionada */}
         {/* Mobile: Fixed fullscreen overlay, Desktop: Relative in layout */}
-        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: selectedRoom ? 'padding-bottom:max(12px, env(safe-area-inset-bottom))' : undefined }}>
-          {selectedRoom ? (
+        {selectedRoom && (
+          <div className={`flex flex-1 flex-col min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: 'padding-bottom:max(12px, env(safe-area-inset-bottom))' }}>
             <Card className="flex-1 flex flex-col min-h-0 h-full max-h-full border-0 lg:border rounded-none lg:rounded-lg shadow-none lg:shadow" style={{ display: 'flex', flexDirection: 'column' }}>
               {/* Chat Header - Fixed */}
               <div className="flex items-center justify-between p-4 border-b bg-background flex-shrink-0 z-10">
@@ -1888,23 +1725,8 @@ export default function InboxPage() {
                 )}
               </div>
             </Card>
-          ) : (
-            <Card className="flex-1 hidden lg:flex items-center justify-center">
-              <div className="text-center p-4">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Clock className="w-8 h-8 sm:w-10 sm:h-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-base sm:text-lg font-semibold mb-2">
-                  Selecione uma conversa
-                </h3>
-                <p className="text-xs sm:text-sm text-muted-foreground max-w-sm">
-                  Escolha uma conversa da lista ao lado para começar a responder
-                </p>
-              </div>
-            </Card>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
       </div>
       {AlertDialogComponent}
       {ToastContainer}
