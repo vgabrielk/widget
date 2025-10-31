@@ -1125,7 +1125,7 @@ export default function InboxPage() {
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
-      <div className={`${selectedRoom ? '-m-3 sm:-m-6 lg:m-0 lg:p-0 h-full' : ''}`}>
+      <div className={`${selectedRoom ? '-m-3 sm:-m-6 lg:m-0 lg:-p-3 lg:-p-6' : ''} ${selectedRoom ? 'lg:h-[calc(100vh-140px)]' : ''}`}>
       <style jsx>{`
         @keyframes fadeIn {
           from {
@@ -1140,7 +1140,7 @@ export default function InboxPage() {
       `}</style>
       {/* Mobile: Fullscreen chat when room selected, otherwise show conversations */}
       {/* Desktop: Split view */}
-      <div className={`flex flex-col lg:flex-row h-[calc(100vh-140px)] sm:h-[calc(100vh-180px)] lg:h-[calc(100vh-140px)] gap-3 sm:gap-6 overflow-hidden ${selectedRoom ? 'lg:overflow-hidden' : ''} relative`}>
+      <div className={`flex flex-col lg:flex-row ${selectedRoom ? 'h-[calc(100vh-140px)]' : 'h-full'} gap-3 sm:gap-6 overflow-hidden ${selectedRoom ? 'lg:overflow-hidden' : ''} relative`}>
         {/* Sidebar - Lista de Conversas - Desktop always visible, Mobile in Sheet */}
         {/* Desktop Sidebar */}
         <div className="hidden lg:flex w-[380px] flex-col gap-3 sm:gap-4">
@@ -1628,9 +1628,9 @@ export default function InboxPage() {
 
         {/* Chat Area - Mobile: Fullscreen, Desktop: Split */}
         {/* Mobile: Fixed fullscreen overlay, Desktop: Relative in layout */}
-        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col min-h-0 lg:min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: selectedRoom ? '100vh' : undefined }}>
+        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: selectedRoom ? '100vh' : undefined }}>
           {selectedRoom ? (
-            <Card className="flex-1 flex flex-col overflow-hidden min-h-0 h-full lg:h-auto border-0 lg:border rounded-none lg:rounded-lg shadow-none lg:shadow">
+            <Card className="flex-1 flex flex-col overflow-hidden min-h-0 h-full border-0 lg:border rounded-none lg:rounded-lg shadow-none lg:shadow">
               {/* Chat Header - Fixed */}
               <div className="flex items-center justify-between p-4 border-b bg-background flex-shrink-0 z-10">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1841,7 +1841,7 @@ export default function InboxPage() {
               </div>
 
               {/* Input - Fixed at bottom */}
-              <div className="p-3 sm:p-4 pb-safe border-t bg-background flex-shrink-0 z-10" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+              <div className="p-3 sm:p-4 pb-safe border-t bg-background flex-shrink-0 z-10 relative" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
                 {selectedRoom.status === 'closed' ? (
                   <div className="text-center py-3 sm:py-4 text-muted-foreground">
                     <p className="text-xs sm:text-sm">Esta conversa está fechada. Reabra para continuar.</p>
