@@ -83,7 +83,7 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
-      setError(err.message || 'Failed to save settings');
+      setError(err.message || 'Erro ao salvar configurações');
     } finally {
       setSaving(false);
     }
@@ -101,7 +101,7 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
-      setError(err.message || 'Failed to upload avatar');
+      setError(err.message || 'Erro ao fazer upload do avatar');
     } finally {
       setUploadingAvatar(false);
     }
@@ -120,7 +120,7 @@ export default function SettingsPage() {
       await supabase.auth.signOut();
       router.push('/');
     } catch (err) {
-      setError('Failed to delete account. Please contact support.');
+      setError('Erro ao excluir conta. Por favor, entre em contato com o suporte.');
     }
   };
 
@@ -186,10 +186,10 @@ export default function SettingsPage() {
             <CardHeader className="pb-3 sm:pb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <User className="h-5 w-5 text-primary flex-shrink-0" />
-                <CardTitle className="text-base sm:text-lg">Profile</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Perfil</CardTitle>
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Update your personal information and avatar
+                Atualize suas informações pessoais e avatar
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
@@ -397,20 +397,20 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Language & Region */}
+          {/* Idioma e Região */}
           <Card>
             <CardHeader className="pb-3 sm:pb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <Globe className="h-5 w-5 text-primary flex-shrink-0" />
-                <CardTitle className="text-base sm:text-lg">Language & Region</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Idioma e Região</CardTitle>
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Set your language and timezone
+                Configure seu idioma e fuso horário
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="language" className="text-sm">Language</Label>
+                <Label htmlFor="language" className="text-sm">Idioma</Label>
                 <select
                   id="language"
                   className="w-full h-9 sm:h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -423,47 +423,47 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Danger Zone */}
+          {/* Zona de Perigo */}
           <Card className="border-destructive/50">
             <CardHeader className="pb-3 sm:pb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <Shield className="h-5 w-5 text-destructive flex-shrink-0" />
-                <CardTitle className="text-base sm:text-lg text-destructive">Danger Zone</CardTitle>
+                <CardTitle className="text-base sm:text-lg text-destructive">Zona de Perigo</CardTitle>
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Irreversible actions
+                Ações irreversíveis
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium">Delete Account</h4>
+                  <h4 className="text-sm font-medium">Excluir Conta</h4>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                    Permanently delete your account and all data
+                    Exclua permanentemente sua conta e todos os dados
                   </p>
                 </div>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm" className="w-full sm:w-auto flex-shrink-0">
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Delete Account
+                      Excluir Conta
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogTitle>Tem certeza absoluta?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete your
-                        account and remove all your data from our servers.
+                        Esta ação não pode ser desfeita. Isso excluirá permanentemente sua
+                        conta e removerá todos os seus dados de nossos servidores.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleDeleteAccount}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
-                        Delete Account
+                        Excluir Conta
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -484,12 +484,12 @@ export default function SettingsPage() {
                   {saving ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
+                      Salvando...
                     </>
                   ) : (
                     <>
                       <Save className="h-4 w-4 mr-2" />
-                      Save Changes
+                      Salvar Alterações
                     </>
                   )}
                 </Button>
@@ -502,7 +502,7 @@ export default function SettingsPage() {
                   disabled={saving}
                   className="w-full sm:w-auto sm:flex-none"
                 >
-                  Cancel
+                  Cancelar
                 </Button>
               </div>
             </CardContent>
