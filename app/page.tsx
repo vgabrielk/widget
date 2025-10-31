@@ -66,7 +66,7 @@ export default async function Home() {
             </Link>
           </Button>
           <Button size="lg" variant="outline" asChild className="text-lg h-14 px-8">
-            <Link href="/demo">
+            <Link href="/realtime-demo">
               Ver Demo
             </Link>
           </Button>
