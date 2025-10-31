@@ -19,7 +19,7 @@ export default async function SupportPage() {
   return (
     <DashboardLayout
       email={user.email || ''}
-      title="Help & Support"
+      title="Ajuda e Suporte"
       description="Obtenha ajuda e suporte para o ChatWidget"
     >
       <div className="space-y-6">
