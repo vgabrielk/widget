@@ -1125,7 +1125,7 @@ export default function InboxPage() {
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
-      <div className="h-full overflow-hidden -m-3 sm:-m-6 lg:-m-6 lg:-mb-8 flex flex-col" style={{ height: '100%', maxHeight: '100%' }}>
+      <div className="h-full overflow-hidden flex flex-col -m-3 sm:-m-6 lg:-m-6 lg:-mb-8 flex-1 min-h-0">
       <style jsx>{`
         @keyframes fadeIn {
           from {
@@ -1201,8 +1201,8 @@ export default function InboxPage() {
           </Card>
 
           {/* Conversations List */}
-          <Card className="flex-1 overflow-hidden min-h-0 flex flex-col">
-            <div className="flex-1 overflow-y-auto min-h-0">
+          <Card className="flex-1 overflow-hidden min-h-0 flex flex-col" style={{ maxHeight: 'calc(100vh - 380px)' }}>
+            <div className="flex-1 overflow-y-auto min-h-0" style={{ maxHeight: 'calc(100vh - 380px)' }}>
               {isRoomsLoading ? (
                 <div className="divide-y">
                   {[...Array(5)].map((_, i) => (
