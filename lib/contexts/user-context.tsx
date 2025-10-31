@@ -85,23 +85,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(CACHE_KEY);
   }, []);
 
-  // Fetch profile from database
+  // Fetch profile from database via API route
   const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
-      const { data, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      const res = await fetch('/api/user/profile', {
+        credentials: 'include', // CRITICAL: Include cookies for auth
+        cache: 'no-store',
+      });
 
-      if (fetchError) throw fetchError;
-      
-      return data as UserProfile | null;
+      if (!res.ok) {
+        throw new Error(`Failed to fetch profile: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      return data.profile as UserProfile | null;
     } catch (err) {
       console.error('Error fetching profile:', err);
       throw err;
     }
-  }, [supabase]);
+  }, []);
 
   // Refresh profile (bypasses cache)
   const refreshProfile = useCallback(async () => {
@@ -123,58 +125,36 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchProfile, saveToCache]);
 
-  // Update profile
+  // Update profile via API route
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) throw new Error('No user logged in');
 
     try {
-      // First, check if profile exists
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // CRITICAL: Include cookies for auth
+        body: JSON.stringify(updates),
+      });
 
-      if (!existingProfile) {
-        // Profile doesn't exist, create it
-        const { data, error: insertError } = await supabase
-          .from('profiles')
-          .insert({
-            id: user.id,
-            email: user.email || '',
-            ...updates,
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-
-        const newProfile = data as UserProfile;
-        setProfile(newProfile);
-        saveToCache(newProfile);
-        return;
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to update profile: ${res.statusText}`);
       }
 
-      // Profile exists, update it
-      const { data, error: updateError } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id)
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
-
-      const updatedProfile = data as UserProfile;
+      const data = await res.json();
+      const updatedProfile = data.profile as UserProfile;
       setProfile(updatedProfile);
       saveToCache(updatedProfile);
     } catch (err: any) {
       console.error('Error updating profile:', err);
       throw new Error(err.message || 'Failed to update profile');
     }
-  }, [user, supabase, saveToCache]);
+  }, [user, saveToCache]);
 
-  // Upload avatar
+  // Upload avatar via API route
   const uploadAvatar = useCallback(async (file: File): Promise<string> => {
     if (!user) throw new Error('No user logged in');
 
@@ -189,41 +169,35 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         throw new Error('File too large. Maximum size is 5MB.');
       }
 
-      // Delete old avatar if exists
-      if (profile?.avatar_url) {
-        try {
-          await supabase.storage.from('avatars').remove([profile.avatar_url]);
-        } catch (err) {
-          console.warn('Failed to delete old avatar:', err);
-        }
+      // Create FormData
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Upload via API route
+      const res = await fetch('/api/user/avatar', {
+        method: 'POST',
+        credentials: 'include', // CRITICAL: Include cookies for auth
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to upload avatar: ${res.statusText}`);
       }
 
-      // Upload new avatar
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/avatar-${Date.now()}.${fileExt}`;
+      const data = await res.json();
+      const avatarUrl = data.avatar_url as string;
+      const updatedProfile = data.profile as UserProfile;
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: true,
-        });
+      // Update local state
+      setProfile(updatedProfile);
+      saveToCache(updatedProfile);
 
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-
-      // Update profile with new avatar URL
-      await updateProfile({ avatar_url: publicUrl });
-
-      return publicUrl;
+      return avatarUrl;
     } catch (err: any) {
       throw new Error(err.message || 'Failed to upload avatar');
     }
-  }, [user, profile, supabase, updateProfile]);
+  }, [user, saveToCache]);
 
   // Initialize user and profile
   useEffect(() => {
@@ -258,26 +232,31 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             })
             .catch(console.error);
         } else {
-          // No cache, fetch from database
+          // No cache, fetch from database via API
           const profileData = await fetchProfile(currentUser.id);
           if (profileData) {
             setProfile(profileData);
             saveToCache(profileData);
           } else {
-            // Profile doesn't exist, create it
+            // Profile doesn't exist, create it via API
             try {
-              const { data: newProfile, error: insertError } = await supabase
-                .from('profiles')
-                .insert({
-                  id: currentUser.id,
+              const createRes = await fetch('/api/user/profile', {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
                   email: currentUser.email || '',
-                })
-                .select()
-                .single();
+                }),
+              });
 
-              if (!insertError && newProfile) {
-                setProfile(newProfile as UserProfile);
-                saveToCache(newProfile as UserProfile);
+              if (createRes.ok) {
+                const createData = await createRes.json();
+                if (createData.profile) {
+                  setProfile(createData.profile as UserProfile);
+                  saveToCache(createData.profile as UserProfile);
+                }
               }
             } catch (err) {
               console.error('Error creating profile:', err);
@@ -306,20 +285,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           setProfile(profileData);
           saveToCache(profileData);
         } else {
-          // Create profile if doesn't exist
+          // Create profile if doesn't exist via API
           try {
-            const { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .insert({
-                id: session.user.id,
+            const createRes = await fetch('/api/user/profile', {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify({
                 email: session.user.email || '',
-              })
-              .select()
-              .single();
+              }),
+            });
 
-            if (!insertError && newProfile) {
-              setProfile(newProfile as UserProfile);
-              saveToCache(newProfile as UserProfile);
+            if (createRes.ok) {
+              const createData = await createRes.json();
+              if (createData.profile) {
+                setProfile(createData.profile as UserProfile);
+                saveToCache(createData.profile as UserProfile);
+              }
             }
           } catch (err) {
             console.error('Error creating profile on sign in:', err);

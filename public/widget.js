@@ -4,12 +4,11 @@
     // =====================================================
     // SECURITY NOTICE
     // =====================================================
-    // This widget uses the Supabase ANON KEY, which is PUBLIC and client-exposed.
-    // CRITICAL: Ensure that Row Level Security (RLS) policies are CORRECTLY configured
-    // in your Supabase database to prevent unauthorized data access or manipulation.
+    // This widget uses API routes for all data operations for better security.
+    // Direct Supabase access is only used for real-time subscriptions.
     // 
     // The security of this widget relies on:
-    // 1. RLS policies on tables (rooms, messages, visitors, widgets)
+    // 1. API route authentication and validation
     // 2. Rate limiting (implemented client-side and server-side)
     // 3. Input sanitization (implemented below)
     // 4. CORS configuration on API routes
@@ -874,75 +873,36 @@
         });
 
             try {
-                // Try to find existing OPEN room
-                const { data: existingRooms } = await supabaseClient
-                    .from('rooms')
-                    .select('*')
-                    .eq('widget_id', widgetData.id)
-                    .eq('visitor_id', visitorId)
-                    .eq('status', 'open')
-                    .order('created_at', { ascending: false })
-                    .limit(1);
-
-            console.log('ChatWidget: Existing rooms query result:', existingRooms);
-
-                // If found open room, use it
-                if (existingRooms && existingRooms.length > 0) {
-                    const existingRoom = existingRooms[0];
-                    roomId = existingRoom.id;
-                    roomStatus = existingRoom.status;
-                localStorage.setItem(STORAGE_KEYS.ROOM_ID, roomId);
-                    
-                console.log('ChatWidget: Found existing open room:', roomId);
-                    
-                    // Update room with visitor info if available and different
-                    if (visitorInfo.name && visitorInfo.email) {
-                        const needsUpdate = 
-                            existingRoom.visitor_name !== visitorInfo.name ||
-                            existingRoom.visitor_email !== visitorInfo.email;
-                            
-                        if (needsUpdate) {
-                            console.log('ChatWidget: Updating room with visitor info');
-                            await supabaseClient
-                                .from('rooms')
-                                .update({
-                                    visitor_name: visitorInfo.name,
-                                    visitor_email: visitorInfo.email,
-                                })
-                                .eq('id', roomId);
-                        }
-                    }
-                    
-                    loadMessages();
-                    subscribeToRoomStatus();
-                    return;
-                }
-
-                // No open room found - create new room
-                console.log('ChatWidget: Creating new room...');
-                
-                const { data: newRoom, error } = await supabaseClient
-                    .from('rooms')
-                    .insert({
-                    widget_id: widgetData.id,
+                // Use API route to initialize or get existing room
+                const response = await fetch(`${API_BASE}/api/visitor/rooms`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        widget_id: widgetData.id,
                         visitor_id: visitorId,
-                    visitor_name: visitorInfo.name,
-                    visitor_email: visitorInfo.email,
-                    status: 'open',
+                        visitor_name: visitorInfo.name,
+                        visitor_email: visitorInfo.email,
                         page_url: window.location.href,
                         page_title: document.title,
-                    })
-                    .select()
-                    .single();
+                    }),
+                });
 
-            if (error) throw error;
-                
-                roomId = newRoom.id;
-            roomStatus = newRoom.status;
-            localStorage.setItem(STORAGE_KEYS.ROOM_ID, roomId);
-            
-            console.log('ChatWidget: New room created:', roomId);
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
 
+                const result = await response.json();
+                const room = result.room;
+
+                roomId = room.id;
+                roomStatus = room.status;
+                localStorage.setItem(STORAGE_KEYS.ROOM_ID, roomId);
+                    
+                console.log('ChatWidget: Room initialized:', roomId);
+                    
                 loadMessages();
                 subscribeToRoomStatus();
             } catch (error) {
@@ -953,13 +913,21 @@
 
         async function loadMessages() {
             try {
-            const { data: messages, error } = await supabaseClient
-                    .from('messages')
-                    .select('*')
-                    .eq('room_id', roomId)
-                    .order('created_at', { ascending: true });
+                // Use API route to load messages
+                const response = await fetch(`${API_BASE}/api/visitor/rooms/${roomId}/messages`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
 
-                if (error) throw error;
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                const result = await response.json();
+                const messages = result.messages || [];
                 
                 const messagesContainer = document.getElementById('chat-widget-messages');
                 if (messagesContainer) {
@@ -1174,20 +1142,26 @@
             
             console.log('ChatWidget: Sending message', { roomId, content: sanitizedContent, imageUrl });
 
-            const { error } = await supabaseClient
-                .from('messages')
-                .insert({
-                    room_id: roomId,
-                    sender_type: 'visitor',
-                    sender_id: visitorId,
-                    sender_name: sanitizeInput(visitorInfo?.name || 'Visitante'),
+            // Use API route to send message
+            const response = await fetch(`${API_BASE}/api/visitor/rooms/${roomId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    visitor_id: visitorId,
+                    visitor_name: sanitizeInput(visitorInfo?.name || 'Visitante'),
                     content: sanitizedContent,
                     image_url: imageUrl || null,
                     image_name: imageName || null,
                     message_type: imageUrl ? 'image' : 'text',
-                });
+                }),
+            });
 
-            if (error) throw error;
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(error);
+            }
 
                 if (input) input.value = '';
 

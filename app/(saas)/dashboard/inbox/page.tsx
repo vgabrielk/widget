@@ -29,7 +29,7 @@ export default function InboxPage() {
   const [rooms, setRooms] = useState<RoomWithWidget[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
 
-  // Load user and widget IDs with timeout safety
+  // Load user and widget IDs via API route
   useEffect(() => {
     console.log('🚀 [GLOBAL INBOX] Loading user and widgets...');
     
@@ -51,21 +51,24 @@ export default function InboxPage() {
         setUser(user);
         console.log('✅ [loadUser] User loaded:', user.email);
 
-        // Get user's widgets
-        console.log('📡 [loadUser] Fetching widgets...');
-        const { data: widgets, error } = await supabase
-          .from('widgets')
-          .select('id')
-          .eq('user_id', user.id);
+        // Get user's widgets via API route
+        console.log('📡 [loadUser] Fetching widgets via API...');
+        const res = await fetch('/api/user/widgets', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
 
-        console.log('📨 [loadUser] Widgets response', { count: widgets?.length || 0, hasError: !!error });
-
-        if (error) {
-          console.error('❌ [loadUser] Error loading widgets:', error);
+        if (!res.ok) {
+          throw new Error(`Failed to load widgets: ${res.statusText}`);
         }
 
-        setWidgetIds(widgets?.map(w => w.id) || []);
-        console.log('✅ [loadUser] Complete - widgetIds:', widgets?.map(w => w.id) || []);
+        const data = await res.json();
+        const widgetIds = data.widgetIds || [];
+        
+        console.log('📨 [loadUser] Widgets response', { count: widgetIds.length });
+
+        setWidgetIds(widgetIds);
+        console.log('✅ [loadUser] Complete - widgetIds:', widgetIds);
       } catch (error) {
         console.error('❌ [loadUser] Error:', error);
         setIsLoadingUser(false); // CRITICAL: Set before redirect
@@ -93,7 +96,7 @@ export default function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load rooms when widgetIds are available
+  // Load rooms when widgetIds are available via API route
   useEffect(() => {
     if (widgetIds.length === 0) {
       console.log('⏸️ [loadRooms] No widgets yet, skipping...');
@@ -106,24 +109,24 @@ export default function InboxPage() {
       console.log('📥 [loadRooms] START', { widgetIds });
       try {
         setIsLoadingRooms(true);
-        console.log('📡 [loadRooms] Fetching rooms from Supabase...');
+        console.log('📡 [loadRooms] Fetching rooms via API...');
         
-        const { data, error } = await supabase
-          .from('rooms')
-          .select('*, widgets!inner(name, brand_color)')
-          .in('widget_id', widgetIds)
-          .order('last_message_at', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-          .limit(100);
+        const res = await fetch('/api/user/rooms', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
 
-        console.log('📨 [loadRooms] Response received', { count: data?.length || 0, hasError: !!error });
-
-        if (error) {
-          console.error('❌ [loadRooms] Supabase error:', error);
-          throw error;
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to load rooms: ${res.statusText}`);
         }
+
+        const data = await res.json();
+        const rooms = data.rooms || [];
+
+        console.log('📨 [loadRooms] Response received', { count: rooms.length });
         
-        setRooms(data || []);
+        setRooms(rooms);
         console.log('✅ [loadRooms] Rooms loaded successfully');
       } catch (error) {
         console.error('❌ [loadRooms] Error:', error);

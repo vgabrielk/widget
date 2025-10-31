@@ -22,26 +22,28 @@ export default function NewWidgetPage() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const { data, error } = await supabase
-        .from('widgets')
-        .insert({
-          user_id: user.id,
+      const res = await fetch('/api/widgets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
           name,
           brand_color: brandColor,
           position,
           welcome_message: welcomeMessage,
           company_name: companyName || null,
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to create widget: ${res.statusText}`);
+      }
 
-      router.push(`/dashboard/widgets/${data.id}/settings`);
+      const data = await res.json();
+      router.push(`/dashboard/widgets/${data.widget.id}/settings`);
     } catch (error: any) {
       setError(error.message || 'Erro ao criar widget');
     } finally {

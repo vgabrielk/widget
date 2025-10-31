@@ -23,7 +23,7 @@ import {
   ArrowLeft,
   Menu
 } from 'lucide-react';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { useUser } from '@/lib/contexts/user-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInboxStore } from '@/stores/useInboxStore';
@@ -34,7 +34,10 @@ export default function InboxPage() {
   const params = useParams();
   const router = useRouter();
   const widgetId = params.id as string;
-  const { user, profile } = useUser();
+  const { user, profile, loading: userLoading } = useUser();
+  
+  // Track if this is the initial mount - helps with navigation detection
+  const isInitialMountRef = useRef(true);
   
   const { messages, setMessages, addMessage, clearMessages } = useInboxStore();
   const { confirm, AlertDialogComponent } = useAlertDialog();
@@ -65,6 +68,19 @@ export default function InboxPage() {
   const [isVisitorOnline, setIsVisitorOnline] = useState(false);
   const [isConversationsMenuOpen, setIsConversationsMenuOpen] = useState(false);
   
+  // Load widget - usando ref para prevenir múltiplas cargas
+  // IMPORTANT: These refs must be defined before the useEffect that uses them
+  const widgetLoadInProgressRef = useRef<string | null>(null); // Store widgetId being loaded
+  const loadedWidgetIdRef = useRef<string | null>(null);
+  const widgetAbortControllerRef = useRef<AbortController | null>(null);
+  const retryCountRef = useRef<number>(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const MAX_RETRIES = 2; // Tentar 2 vezes antes de mostrar erro
+  
+  // NOTE: We don't need to monitor pathname separately
+  // The widgetId from params already captures route changes
+  // Monitoring pathname was causing unnecessary request cancellations
+  
   // Manter selectedRoomRef sincronizado
   useEffect(() => {
     selectedRoomRef.current = selectedRoom;
@@ -86,7 +102,9 @@ export default function InboxPage() {
       console.log('📥 [Inbox] Loading messages via API for roomId:', roomId);
       
       // Load messages via API route (server-side, more reliable)
-      const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/messages`);
+      const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/messages`, {
+        credentials: 'include' // CRITICAL: Include cookies for auth
+      });
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -105,46 +123,118 @@ export default function InboxPage() {
     }
   }, [widgetId, setMessages]);
 
-  // Load widget - usando ref para prevenir múltiplas cargas
-  const widgetLoadInProgressRef = useRef(false);
-  const loadedWidgetIdRef = useRef<string | null>(null);
-  const widgetAbortControllerRef = useRef<AbortController | null>(null);
-  
   useEffect(() => {
-    // ⚠️ CRITICAL: Only load widget if widgetId changed, not when widget state changes
-    if (!widgetId || loadedWidgetIdRef.current === widgetId) {
-      // If widget already loaded for this widgetId, ensure loading state is false
-      if (loadedWidgetIdRef.current === widgetId && isWidgetLoading) {
-        console.log('✅ [Inbox] Widget already loaded, ensuring loading state is false');
+    // Mark that initial mount is complete after first render
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+    }
+    
+    if (!widgetId) {
+      previousWidgetIdRef.current = widgetId;
+      return;
+    }
+    
+    // ⚠️ CRITICAL: Detect widgetId change
+    const widgetIdChanged = previousWidgetIdRef.current !== widgetId && previousWidgetIdRef.current !== null;
+    const isFirstLoad = previousWidgetIdRef.current === null;
+    
+    // Always reset state when widgetId changes (including first load)
+    if (widgetIdChanged || isFirstLoad) {
+      // Clear any pending retry
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      retryCountRef.current = 0;
+      
+      // Abort any pending request for a different widgetId
+      if (widgetAbortControllerRef.current) {
+        const currentLoadingId = widgetLoadInProgressRef.current;
+        if (currentLoadingId !== widgetId) {
+          widgetAbortControllerRef.current.abort();
+        }
+        widgetAbortControllerRef.current = null;
+      }
+      
+      // Reset refs and state
+      widgetLoadInProgressRef.current = null;
+      if (widgetIdChanged) {
+        loadedWidgetIdRef.current = null;
+        setWidget(null);
+        setWidgetError(null);
         setIsWidgetLoading(false);
       }
+    }
+    
+    // ⚠️ CRITICAL: Don't load until user is authenticated
+    if (userLoading || !user) {
+      previousWidgetIdRef.current = widgetId;
       return;
     }
     
-    // Prevenir múltiplas cargas simultâneas
-    if (widgetLoadInProgressRef.current) {
-      console.log('⏸️ [Inbox] Widget load already in progress, skipping...');
+    // Skip if already loaded for this widgetId (and widgetId didn't change)
+    if (!widgetIdChanged && !isFirstLoad && loadedWidgetIdRef.current === widgetId) {
+      // Double check widget state matches
+      if (widget?.id === widgetId && !isWidgetLoading) {
+        previousWidgetIdRef.current = widgetId;
+        return;
+      }
+      // If widget state doesn't match, reset and reload
+      loadedWidgetIdRef.current = null;
+      setWidget(null);
+    }
+    
+    // Skip if already loading this exact widgetId
+    if (widgetLoadInProgressRef.current === widgetId) {
       return;
     }
     
-    widgetLoadInProgressRef.current = true;
+    // Start loading
+    widgetLoadInProgressRef.current = widgetId;
+    retryCountRef.current = 0; // Reset retry count for new widgetId
     
-    const load = async () => {
+    const load = async (attempt: number = 0): Promise<void> => {
+      const currentWidgetId = widgetId; // Capture widgetId at start of load
+      let willRetry = false;
+      
+      // Verify we're still loading the same widgetId
+      if (params.id !== currentWidgetId || widgetLoadInProgressRef.current !== currentWidgetId) {
+        return;
+      }
+      
       const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 15000); // 15s timeout
+      const timeoutId = setTimeout(() => {
+        abortController.abort();
+      }, 10000); // 10s timeout (reduzido de 15s)
+      
       widgetAbortControllerRef.current = abortController;
       
       try {
         setIsWidgetLoading(true);
-        console.log('📦 [Inbox] Loading widget:', widgetId);
+        // Don't show error during retry attempts
+        if (attempt === 0) {
+          setWidgetError(null);
+        }
         
-        // Load widget via API route to avoid hanging query
-        const res = await fetch(`/api/widgets/${widgetId}`, {
+        // Load widget via API route
+        const url = `/api/widgets/${currentWidgetId}?t=${Date.now()}&attempt=${attempt}`;
+        const res = await fetch(url, {
           signal: abortController.signal,
-          cache: 'no-store' // Prevent caching issues
+          cache: 'no-store',
+          credentials: 'include',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
         });
         
         clearTimeout(timeoutId);
+        
+        // Verify widgetId hasn't changed during fetch
+        if (params.id !== currentWidgetId || widgetLoadInProgressRef.current !== currentWidgetId) {
+          return;
+        }
         
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
@@ -152,53 +242,102 @@ export default function InboxPage() {
         }
         
         const widgetData = await res.json();
-        console.log('✅ [Inbox] Widget loaded:', widgetData.name || widgetData.id);
         
-        loadedWidgetIdRef.current = widgetId;
-        setWidget(widgetData);
-        setWidgetError(null);
+        // Double check widgetId before updating state
+        if (params.id === currentWidgetId && widgetLoadInProgressRef.current === currentWidgetId) {
+          loadedWidgetIdRef.current = currentWidgetId;
+          setWidget(widgetData);
+          setWidgetError(null);
+          retryCountRef.current = 0; // Reset retry count on success
+          setIsWidgetLoading(false);
+          widgetLoadInProgressRef.current = null;
+        }
       } catch (error: any) {
         clearTimeout(timeoutId);
+        
+        // Verify widgetId before handling error
+        if (params.id !== currentWidgetId || widgetLoadInProgressRef.current !== currentWidgetId) {
+          return;
+        }
+        
+        // If we haven't exceeded max retries, retry automatically
+        if (attempt < MAX_RETRIES && error.name === 'AbortError') {
+          willRetry = true;
+          retryCountRef.current = attempt + 1;
+          const retryDelay = Math.min(1000 * Math.pow(2, attempt), 3000); // Exponential backoff, max 3s
+          
+          // Keep loading state true during retry
+          setIsWidgetLoading(true);
+          
+          // Schedule retry
+          retryTimeoutRef.current = setTimeout(() => {
+            // Verify widgetId hasn't changed before retrying
+            if (params.id === currentWidgetId && widgetLoadInProgressRef.current === currentWidgetId) {
+              load(attempt + 1);
+            } else {
+              // WidgetId changed, cancel retry
+              setIsWidgetLoading(false);
+              widgetLoadInProgressRef.current = null;
+              retryTimeoutRef.current = null;
+            }
+          }, retryDelay);
+          
+          widgetAbortControllerRef.current = null;
+          return; // Don't show error yet, don't update loading state
+        }
+        
+        // Only show error after all retries failed or if it's not a timeout
+        setIsWidgetLoading(false);
         if (error.name === 'AbortError') {
-          console.error('⏰ [Inbox] Widget loading timeout after 15s');
           setWidgetError('Timeout ao carregar widget. Verifique sua conexão.');
         } else {
-          console.error('❌ [Inbox] Error loading widget:', error);
           setWidgetError(error?.message || 'Erro ao carregar widget');
         }
+        
         // Reset loadedWidgetIdRef on error to allow retry
-        if (loadedWidgetIdRef.current === widgetId) {
+        if (loadedWidgetIdRef.current === currentWidgetId) {
           loadedWidgetIdRef.current = null;
         }
-      } finally {
-        console.log('✅ [Inbox] Setting isWidgetLoading to false');
-        setIsWidgetLoading(false);
-        widgetLoadInProgressRef.current = false;
+        widgetLoadInProgressRef.current = null;
         widgetAbortControllerRef.current = null;
+      } finally {
+        // Only update loading state if we didn't handle it in catch
+        if (!willRetry) {
+          // Loading state is already handled in try/catch blocks
+          widgetAbortControllerRef.current = null;
+        }
       }
     };
     
     load();
     
+    // Update previousWidgetIdRef
+    previousWidgetIdRef.current = widgetId;
+    
     // Cleanup: abort pending requests on unmount or widgetId change
     return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       if (widgetAbortControllerRef.current) {
         widgetAbortControllerRef.current.abort();
         widgetAbortControllerRef.current = null;
       }
+      // Only clear loading ref if it matches current widgetId
+      if (widgetLoadInProgressRef.current === widgetId) {
+        widgetLoadInProgressRef.current = null;
+      }
     };
-    // ⚠️ CRITICAL: Only depend on widgetId, not widget?.id or supabase
-    // widget?.id changes after loading, which would trigger reload
-    // supabase is memoized, so it's stable, but we don't need it here
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widgetId]);
+  }, [widgetId, user, userLoading, params.id]);
 
   // Load initial rooms via API route (server-side, more reliable)
   useEffect(() => {
+    const currentWidgetId = widgetId; // Capture widgetId at start of effect
     const widgetIdChanged = previousWidgetIdRef.current !== widgetId;
     
     console.log('🔄 [Inbox] useEffect widgetId check:', { 
-      widgetId, 
+      widgetId: currentWidgetId, 
       previousWidgetId: previousWidgetIdRef.current,
       widgetIdChanged,
       roomsLoaded: roomsLoadedRef.current,
@@ -208,6 +347,12 @@ export default function InboxPage() {
     // Reset flags only if widgetId actually changed
     if (widgetIdChanged && previousWidgetIdRef.current !== null) {
       console.log('🔄 [Inbox] WidgetId changed, resetting flags');
+      // Abort pending room requests for old widgetId
+      if (loadRoomsAbortControllerRef.current) {
+        console.log('🚫 [Inbox] Aborting rooms request for old widgetId');
+        loadRoomsAbortControllerRef.current.abort();
+        loadRoomsAbortControllerRef.current = null;
+      }
       roomsLoadedRef.current = false;
       roomsLoadingRef.current = false;
       setRooms([]);
@@ -216,30 +361,54 @@ export default function InboxPage() {
     // Update previous widgetId
     previousWidgetIdRef.current = widgetId;
     
+    // ⚠️ CRITICAL: Don't load until user is authenticated and loaded
+    if (userLoading || !user) {
+      console.log('⏸️ [Inbox] Waiting for user authentication before loading rooms', { userLoading, hasUser: !!user });
+      return;
+    }
+    
     // Only load if widgetId exists and we haven't loaded yet
-    if (widgetId && !roomsLoadedRef.current && !roomsLoadingRef.current) {
-      console.log('🚀 [Inbox] Loading rooms via API for widgetId:', widgetId);
+    if (currentWidgetId && !roomsLoadedRef.current && !roomsLoadingRef.current) {
+      console.log('🚀 [Inbox] Loading rooms via API for widgetId:', currentWidgetId);
       roomsLoadedRef.current = true;
       roomsLoadingRef.current = true;
       setIsRoomsLoading(true);
       
       // Load via API route (server-side, avoids client query hanging)
       const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 15000); // 15s timeout
+      const timeoutId = setTimeout(() => {
+        console.error('⏰ [Inbox] Rooms fetch timeout, aborting...');
+        abortController.abort();
+      }, 15000); // 15s timeout
       loadRoomsAbortControllerRef.current = abortController;
       
-      fetch(`/api/widgets/${widgetId}/rooms`, { 
+      fetch(`/api/widgets/${currentWidgetId}/rooms?t=${Date.now()}`, { 
         signal: abortController.signal,
-        cache: 'no-store' // Prevent caching issues
+        cache: 'no-store', // Prevent caching issues
+        credentials: 'include' // CRITICAL: Include cookies for auth
       })
         .then(res => {
           clearTimeout(timeoutId);
+          
+          // Verify widgetId hasn't changed during fetch
+          if (params.id !== currentWidgetId) {
+            console.log('⚠️ [Inbox] WidgetId changed during rooms fetch, ignoring response');
+            return;
+          }
+          
+          console.log('📡 [Inbox] Rooms fetch response:', res.status, res.statusText);
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}: ${res.statusText}`);
           }
           return res.json();
         })
-        .then((data: { rooms: Room[] }) => {
+        .then((data: { rooms: Room[] } | void) => {
+          // Verify widgetId hasn't changed before updating state
+          if (!data || params.id !== currentWidgetId) {
+            console.log('⚠️ [Inbox] WidgetId changed after rooms fetch, not updating state');
+            return;
+          }
+          
           console.log('✅ [Inbox] Rooms loaded via API:', data.rooms.length);
           setRooms(data.rooms || []);
           console.log('✅ [Inbox] Setting isRoomsLoading to false');
@@ -249,29 +418,44 @@ export default function InboxPage() {
         })
         .catch((err) => {
           clearTimeout(timeoutId);
+          
+          // Only handle error if widgetId hasn't changed
+          if (params.id !== currentWidgetId) {
+            console.log('⚠️ [Inbox] WidgetId changed during rooms fetch error, ignoring');
+            return;
+          }
+          
           if (err.name === 'AbortError') {
-            console.error('⏰ [Inbox] Rooms loading timeout after 15s');
+            console.error('⏰ [Inbox] Rooms loading timeout or aborted');
+            // Don't show error if it was aborted due to navigation
+            if (params.id === currentWidgetId) {
+              roomsLoadedRef.current = false; // Allow retry only if still same widgetId
+            }
           } else {
             console.error('❌ [Inbox] Error loading rooms via API:', err);
+            roomsLoadedRef.current = false; // Allow retry
           }
-          roomsLoadedRef.current = false; // Allow retry
           setIsRoomsLoading(false);
           roomsLoadingRef.current = false;
         })
         .finally(() => {
-          loadRoomsAbortControllerRef.current = null;
+          // Only clear abort controller if this request was for current widgetId
+          if (loadRoomsAbortControllerRef.current === abortController && params.id === currentWidgetId) {
+            loadRoomsAbortControllerRef.current = null;
+          }
         });
     }
     
-    // Cleanup: abort pending requests on unmount or widgetId change
+    // Cleanup: abort pending requests ONLY if widgetId changed or component unmounting
     return () => {
-      if (loadRoomsAbortControllerRef.current) {
+      // Only abort if widgetId actually changed (not just pathname navigation to same widgetId)
+      if (loadRoomsAbortControllerRef.current && params.id !== currentWidgetId) {
+        console.log('🧹 [Inbox] Cleanup: aborting rooms request for different widgetId');
         loadRoomsAbortControllerRef.current.abort();
         loadRoomsAbortControllerRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widgetId]);
+  }, [widgetId, user, userLoading, params.id]);
 
   // Subscribe to rooms updates (realtime)
   useEffect(() => {
@@ -466,14 +650,14 @@ export default function InboxPage() {
           
           addMessage(newMessage);
           
-          if (newMessage.sender_type === 'visitor' && !newMessage.is_read) {
-            supabase
-              .from('messages')
-              .update({ is_read: true, read_at: new Date().toISOString() })
-              .eq('id', newMessage.id)
-              .then(({ error }) => {
-                if (error) console.error('Error marking message as read:', error);
-              });
+          if (newMessage.sender_type === 'visitor' && !newMessage.is_read && widgetId && selectedRoomId) {
+            // Mark as read via API route
+            fetch(`/api/widgets/${widgetId}/rooms/${selectedRoomId}/messages/${newMessage.id}/read`, {
+              method: 'PATCH',
+              credentials: 'include',
+            }).catch((err) => {
+              console.error('Error marking message as read:', err);
+            });
           }
         }
       )
@@ -679,6 +863,7 @@ export default function InboxPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // CRITICAL: Include cookies for auth
         body: JSON.stringify({
           content: messageContent,
           sender_name: profile?.full_name || 'Suporte',
@@ -717,111 +902,86 @@ export default function InboxPage() {
 
     try {
       // CRITICAL: Verify room is still selected before proceeding
-      if (roomId !== currentRoomIdRef.current) {
+      if (roomId !== currentRoomIdRef.current || !widgetId) {
         return;
       }
 
-      // 1. Buscar todas as mensagens com imagens
-      const { data: messagesWithImages } = await supabase
-        .from('messages')
-        .select('image_url')
-        .eq('room_id', roomId)
-        .not('image_url', 'is', null);
+      // Close conversation via API route (handles messages, storage, and room update)
+      const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/close`, {
+        method: 'PATCH',
+        credentials: 'include',
+      });
 
-      // 2. Deletar imagens do storage
-      if (messagesWithImages && messagesWithImages.length > 0) {
-        const imagePaths = messagesWithImages
-          .map(m => {
-            const match = m.image_url?.match(/chat-images\/(.+)$/);
-            return match ? match[1] : null;
-          })
-          .filter(Boolean) as string[];
-
-        if (imagePaths.length > 0) {
-          await supabase.storage
-            .from('chat-images')
-            .remove(imagePaths);
-        }
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to close conversation: ${res.statusText}`);
       }
 
-      // Verify again before continuing
+      // Verify again before updating UI
       if (roomId !== currentRoomIdRef.current) return;
 
-      // 3. Adicionar mensagem de sistema via API route
-      if (widgetId) {
-        const systemMessageRes = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/messages`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            content: 'Conversa encerrada pelo suporte.',
-            sender_name: 'Sistema',
-            message_type: 'system',
-          }),
-        });
-
-        if (!systemMessageRes.ok) {
-          console.error('Error sending system message:', await systemMessageRes.text());
-          // Continue even if system message fails
-        }
-      }
-
-      // Verify again before continuing
-      if (roomId !== currentRoomIdRef.current) return;
-
-      // 4. Fechar a conversa
-      await supabase
-        .from('rooms')
-        .update({ status: 'closed' })
-        .eq('id', roomId);
+      const data = await res.json();
       
       // Only refresh if still on same room
-      if (roomId === currentRoomIdRef.current) {
-        const { data: updatedRoom } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('id', roomId)
-          .single();
-        
-        if (updatedRoom) {
-          setSelectedRoom(updatedRoom);
-        }
+      if (roomId === currentRoomIdRef.current && data.room) {
+        setSelectedRoom(data.room);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error closing conversation:', error);
-      showError('Erro ao fechar conversa. Tente novamente.');
+      showError(error.message || 'Erro ao fechar conversa. Tente novamente.');
     }
-  }, [supabase, confirm, showError, widgetId]);
+  }, [confirm, showError, widgetId]);
 
   const reopenConversation = useCallback(async (roomId: string) => {
     try {
       // CRITICAL: Verify room is still selected
-      if (roomId !== currentRoomIdRef.current) {
+      if (roomId !== currentRoomIdRef.current || !widgetId) {
         return;
       }
 
-      await supabase
-        .from('rooms')
-        .update({ status: 'open' })
-        .eq('id', roomId);
+      // Reopen conversation via API route
+      const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/reopen`, {
+        method: 'PATCH',
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to reopen conversation: ${res.statusText}`);
+      }
+
+      // Verify again before updating UI
+      if (roomId !== currentRoomIdRef.current) return;
+
+      const data = await res.json();
       
       // Only refresh if still on same room
-      if (roomId === currentRoomIdRef.current) {
-        const { data: updatedRoom } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('id', roomId)
-          .single();
-        
-        if (updatedRoom) {
-          setSelectedRoom(updatedRoom);
-        }
+      if (roomId === currentRoomIdRef.current && data.room) {
+        setSelectedRoom(data.room);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error reopening conversation:', error);
+      showError(error.message || 'Erro ao reabrir conversa. Tente novamente.');
     }
-  }, [supabase]);
+  }, [showError, widgetId]);
+
+  // Retry function - MUST be defined before any conditional returns or renders
+  const handleRetry = useCallback(() => {
+    console.log('🔄 [Inbox] Manual retry triggered');
+    // Clear any pending retry
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    // Reset state to trigger reload
+    loadedWidgetIdRef.current = null;
+    setWidget(null);
+    setWidgetError(null);
+    widgetLoadInProgressRef.current = null;
+    retryCountRef.current = 0;
+    // Force reload by updating previousWidgetIdRef
+    previousWidgetIdRef.current = null;
+  }, []);
 
   const getInitials = (name: string | null) => {
     if (!name) return 'V';
@@ -916,7 +1076,7 @@ export default function InboxPage() {
     );
   }
 
-  if (widgetError) {
+  if (widgetError && !isWidgetLoading) {
     return (
       <DashboardLayout
         email={user?.email || ''}
@@ -934,11 +1094,18 @@ export default function InboxPage() {
                 <p className="text-sm text-muted-foreground mb-4">{widgetError}</p>
               </div>
               <div className="flex gap-2 justify-center">
-                <Button onClick={() => router.push('/dashboard')} variant="default">
+                <Button onClick={() => router.push('/dashboard')} variant="outline">
                   Voltar ao Dashboard
                 </Button>
-                <Button onClick={() => window.location.reload()} variant="outline">
-                  Tentar Novamente
+                <Button onClick={handleRetry} variant="default" disabled={isWidgetLoading}>
+                  {isWidgetLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Carregando...
+                    </>
+                  ) : (
+                    'Tentar Novamente'
+                  )}
                 </Button>
               </div>
             </div>
@@ -1139,6 +1306,7 @@ export default function InboxPage() {
         {/* Mobile Conversations Menu Sheet */}
         <Sheet open={isConversationsMenuOpen} onOpenChange={setIsConversationsMenuOpen}>
           <SheetContent side="left" className="p-0 w-full sm:w-[400px] overflow-hidden flex flex-col">
+            <SheetTitle className="sr-only">Lista de Conversas</SheetTitle>
             {/* Mobile Conversations List */}
             <div className="flex flex-col h-full">
               {/* Header */}
@@ -1722,3 +1890,4 @@ export default function InboxPage() {
     </DashboardLayout>
   );
 }
+

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { useUser } from '@/lib/contexts/user-context';
@@ -55,19 +55,19 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
-  const [fullName, setFullName] = useState(profile?.full_name || '');
-  const [companyName, setCompanyName] = useState(profile?.company_name || '');
+  const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(false);
 
   // Update form when profile loads
-  useState(() => {
+  useEffect(() => {
     if (profile) {
       setFullName(profile.full_name || '');
       setCompanyName(profile.company_name || '');
     }
-  });
+  }, [profile]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -112,6 +112,7 @@ export default function SettingsPage() {
       // Call delete account endpoint
       const response = await fetch('/api/user/delete', {
         method: 'DELETE',
+        credentials: 'include', // CRITICAL: Include cookies for auth
       });
 
       if (!response.ok) throw new Error('Failed to delete account');

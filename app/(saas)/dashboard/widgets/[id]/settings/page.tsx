@@ -56,23 +56,25 @@ export default function WidgetSettingsPage() {
     
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('widgets')
-        .select('*')
-        .eq('id', widgetId)
-        .single();
+      const res = await fetch(`/api/widgets/${widgetId}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
 
-      if (error) throw error;
-      if (!data) {
-        router.push('/dashboard');
-        return;
+      if (!res.ok) {
+        if (res.status === 404) {
+          router.push('/dashboard');
+          return;
+        }
+        throw new Error(`Failed to load widget: ${res.statusText}`);
       }
 
+      const data = await res.json();
       setWidget(data);
       setName(data.name);
       setBrandColor(data.brand_color);
       setPosition(data.position);
-      setWelcomeMessage(data.welcome_message);
+      setWelcomeMessage(data.welcome_message || '');
       setCompanyName(data.company_name || '');
       setIsActive(data.is_active);
       setDomains(data.domains || []);
@@ -82,7 +84,7 @@ export default function WidgetSettingsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [widgetId, supabase, router]);
+  }, [widgetId, router]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -113,9 +115,13 @@ export default function WidgetSettingsPage() {
     setSaved(false);
 
     try {
-      const { error } = await supabase
-        .from('widgets')
-        .update({
+      const res = await fetch(`/api/widgets/${widgetId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
           name,
           brand_color: brandColor,
           position,
@@ -123,20 +129,26 @@ export default function WidgetSettingsPage() {
           company_name: companyName || null,
           is_active: isActive,
           domains: domains.length > 0 ? domains : null,
-        })
-        .eq('id', widgetId);
+        }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to update widget: ${res.statusText}`);
+      }
 
+      const data = await res.json();
+      setWidget(data.widget);
+      
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving widget:', error);
-      showError('Erro ao salvar configurações');
+      showError(error.message || 'Erro ao salvar configurações');
     } finally {
       setLoading(false);
     }
-  }, [widgetId, supabase, name, brandColor, position, welcomeMessage, companyName, isActive, domains, showError]);
+  }, [widgetId, name, brandColor, position, welcomeMessage, companyName, isActive, domains, showError]);
 
   const embedCode = widget ? `<!-- ChatWidget -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
