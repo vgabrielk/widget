@@ -152,9 +152,9 @@ export default function SettingsPage() {
         <div className="w-full mx-auto space-y-6 sm:space-y-8">
           {/* Header */}
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">Configurações</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">
-              Manage your account settings and preferences
+              Gerencie suas configurações de conta e preferências
             </p>
           </div>
 
@@ -175,7 +175,7 @@ export default function SettingsPage() {
               <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-primary">
-                  Settings saved successfully!
+                  Configurações salvas com sucesso!
                 </p>
               </div>
             </div>
@@ -240,12 +240,12 @@ export default function SettingsPage() {
                     {uploadingAvatar ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Uploading...
+                        Enviando...
                       </>
                     ) : (
                       <>
                         <Upload className="h-4 w-4 mr-2" />
-                        Change Avatar
+                        Alterar Avatar
                       </>
                     )}
                   </Button>
@@ -256,24 +256,24 @@ export default function SettingsPage() {
 
               {/* Full Name */}
               <div className="space-y-2">
-                <Label htmlFor="fullName" className="text-sm">Full Name</Label>
+                <Label htmlFor="fullName" className="text-sm">Nome Completo</Label>
                 <Input
                   id="fullName"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Enter your full name"
+                  placeholder="Digite seu nome completo"
                   className="h-9 sm:h-10"
                 />
               </div>
 
               {/* Company Name */}
               <div className="space-y-2">
-                <Label htmlFor="companyName" className="text-sm">Company Name</Label>
+                <Label htmlFor="companyName" className="text-sm">Nome da Empresa</Label>
                 <Input
                   id="companyName"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Enter your company name"
+                  placeholder="Digite o nome da sua empresa"
                   className="h-9 sm:h-10"
                 />
               </div>
@@ -291,7 +291,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Email cannot be changed. Contact support if needed.
+                  O email não pode ser alterado. Entre em contato com o suporte se necessário.
                 </p>
               </div>
             </CardContent>
@@ -302,20 +302,20 @@ export default function SettingsPage() {
             <CardHeader className="pb-3 sm:pb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <Bell className="h-5 w-5 text-primary flex-shrink-0" />
-                <CardTitle className="text-base sm:text-lg">Notifications</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Notificações</CardTitle>
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Manage how you receive notifications
+                Gerencie como você recebe notificações
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <Label htmlFor="emailNotifications" className="text-sm font-medium cursor-pointer">
-                    Email Notifications
+                    Notificações por Email
                   </Label>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                    Receive notifications via email
+                    Receba notificações por email
                   </p>
                 </div>
                 <Switch
@@ -331,10 +331,10 @@ export default function SettingsPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <Label htmlFor="pushNotifications" className="text-sm font-medium cursor-pointer">
-                    Push Notifications
+                    Notificações Push
                   </Label>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                    Receive push notifications in browser
+                    Receba notificações push no navegador
                   </p>
                 </div>
                 <Switch
@@ -350,10 +350,10 @@ export default function SettingsPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <Label htmlFor="weeklyReports" className="text-sm font-medium cursor-pointer">
-                    Weekly Reports
+                    Relatórios Semanais
                   </Label>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                    Receive weekly summary reports
+                    Receba relatórios resumidos semanais
                   </p>
                 </div>
                 <Switch
@@ -371,18 +371,18 @@ export default function SettingsPage() {
             <CardHeader className="pb-3 sm:pb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <Palette className="h-5 w-5 text-primary flex-shrink-0" />
-                <CardTitle className="text-base sm:text-lg">Appearance</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Aparência</CardTitle>
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Customize how the app looks
+                Personalize a aparência do aplicativo
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <Label className="text-sm font-medium">Theme</Label>
+                  <Label className="text-sm font-medium">Tema</Label>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                    Switch between light and dark mode
+                    Alterne entre modo claro e escuro
                   </p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">

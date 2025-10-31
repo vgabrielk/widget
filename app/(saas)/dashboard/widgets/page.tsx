@@ -159,15 +159,15 @@ export default async function WidgetsPage() {
 
                   {/* Actions */}
                   <div className="grid grid-cols-2 gap-2 pt-2">
-                    <Button variant="default" asChild className="w-full">
+                    <Button variant="default" asChild className="w-full" size="default">
                       <Link href={`/dashboard/widgets/${widget.id}/inbox`}>
-                        <Inbox className="mr-2 h-4 w-4" />
+                        <Inbox className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                         Inbox
                       </Link>
                     </Button>
-                    <Button variant="outline" asChild className="w-full">
+                    <Button variant="outline" asChild className="w-full" size="default">
                       <Link href={`/dashboard/widgets/${widget.id}/settings`}>
-                        <Settings className="mr-2 h-4 w-4" />
+                        <Settings className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                         Config
                       </Link>
                     </Button>

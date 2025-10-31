@@ -252,15 +252,15 @@ export default async function DashboardPage() {
                       </div>
 
                       <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                        <Button variant="default" asChild className="flex-1" size="sm">
+                        <Button variant="default" asChild className="flex-1" size="default">
                           <Link href={`/dashboard/widgets/${widget.id}/inbox`}>
-                            <Inbox className="mr-2 h-4 w-4" />
+                            <Inbox className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                             Inbox
                           </Link>
                         </Button>
-                        <Button variant="outline" asChild className="flex-1" size="sm">
+                        <Button variant="outline" asChild className="flex-1" size="default">
                           <Link href={`/dashboard/widgets/${widget.id}/settings`}>
-                            <Settings className="mr-2 h-4 w-4" />
+                            <Settings className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                             Config
                           </Link>
                         </Button>
@@ -286,38 +286,6 @@ export default async function DashboardPage() {
                 </div>
                 <CardDescription className="text-xs sm:text-sm">
                   Configure um novo widget para seu site
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/setup-saas" className="group">
-            <Card className="card-clean hover:border-primary transition-all cursor-pointer h-full">
-              <CardHeader className="p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 group-hover:bg-primary transition-all">
-                    <Settings className="h-5 w-5 text-primary group-hover:text-white" />
-                  </div>
-                  <CardTitle className="text-base sm:text-lg">Setup Database</CardTitle>
-                </div>
-                <CardDescription className="text-xs sm:text-sm">
-                  Configure o banco de dados
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/realtime-demo" className="group">
-            <Card className="card-clean hover:border-primary transition-all cursor-pointer h-full">
-              <CardHeader className="p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 group-hover:bg-primary transition-all">
-                    <MessageSquare className="h-5 w-5 text-primary group-hover:text-white" />
-                  </div>
-                  <CardTitle className="text-base sm:text-lg">Ver Demo</CardTitle>
-                </div>
-                <CardDescription className="text-xs sm:text-sm">
-                  Teste o widget em ação
                 </CardDescription>
               </CardHeader>
             </Card>

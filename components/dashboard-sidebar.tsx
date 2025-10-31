@@ -57,22 +57,22 @@ const mainNavItems: NavItem[] = [
 
 const settingsNavItems: NavItem[] = [
   {
-    name: 'Settings',
+    name: 'Configurações',
     href: '/dashboard/settings',
     icon: Settings,
   },
   {
-    name: 'Billing',
+    name: 'Planos',
     href: '/dashboard/billing',
     icon: CreditCard,
   },
   {
-    name: 'Documentation',
+    name: 'Documentação',
     href: '/dashboard/docs',
     icon: FileText,
   },
   {
-    name: 'Help & Support',
+    name: 'Ajuda e Suporte',
     href: '/dashboard/support',
     icon: HelpCircle,
   },
@@ -139,7 +139,7 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
 
         <div className="space-y-1">
           <p className="px-3 sm:px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Settings
+            Configurações
           </p>
           {settingsNavItems.map((item) => {
             const Icon = item.icon;
