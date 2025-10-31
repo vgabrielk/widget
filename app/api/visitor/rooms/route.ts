@@ -48,6 +48,24 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient();
 
+    // Check if visitor is banned
+    const { data: visitor, error: visitorError } = await supabase
+      .from('visitors')
+      .select('banned, ban_reason')
+      .eq('visitor_id', visitor_id)
+      .single();
+
+    if (!visitorError && visitor?.banned) {
+      return NextResponse.json(
+        {
+          error: 'Visitor is banned',
+          banned: true,
+          reason: visitor.ban_reason || 'No reason provided',
+        },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
     // Try to find existing open room for this widget and visitor
     const { data: existingRooms, error: fetchError } = await supabase
       .from('rooms')

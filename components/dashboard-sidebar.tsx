@@ -14,6 +14,7 @@ import {
   CreditCard,
   HelpCircle,
   LogOut,
+  Ban,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -49,6 +50,11 @@ const mainNavItems: NavItem[] = [
     name: 'Contatos',
     href: '/dashboard/contacts',
     icon: Users,
+  },
+  {
+    name: 'Visitantes Banidos',
+    href: '/dashboard/banned-visitors',
+    icon: Ban,
   },
 ];
 

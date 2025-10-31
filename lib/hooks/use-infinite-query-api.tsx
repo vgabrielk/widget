@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useSyncExternalStore, useState } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 interface UseInfiniteQueryApiProps {
   // API endpoint to fetch data from
@@ -132,38 +132,52 @@ const initialState = {
 export function useInfiniteQueryApi<TData = any>(
   props: UseInfiniteQueryApiProps
 ) {
-  const { queryKey } = props
-  const prevKey = useRef<string | undefined>(queryKey)
-  const storeRef = useRef(createStore<TData>(props))
+  const { queryKey, apiEndpoint } = props
+  const prevKeyRef = useRef<string | undefined>(undefined)
+  const prevEndpointRef = useRef<string | undefined>(undefined)
+  const storeRef = useRef<ReturnType<typeof createStore<TData>> | null>(null)
+  const initializedRef = useRef(false)
 
-  // Recreate store when queryKey or apiEndpoint changes
-  if (prevKey.current !== queryKey) {
-    prevKey.current = queryKey
+  // Create or recreate store only when queryKey or apiEndpoint actually changes
+  const storeKey = `${queryKey}-${apiEndpoint}`
+  const prevStoreKeyRef = useRef<string>('')
+  
+  if (prevStoreKeyRef.current !== storeKey) {
+    prevStoreKeyRef.current = storeKey
     storeRef.current = createStore<TData>(props)
+    initializedRef.current = false // Reset initialization flag when store changes
   }
 
+  const currentStore = storeRef.current!
   const state = useSyncExternalStore(
-    storeRef.current.subscribe,
-    () => storeRef.current.getState(),
+    currentStore.subscribe,
+    () => currentStore.getState(),
     () => initialState as StoreState<TData>,
   )
 
+  // Initialize only once per store instance
   useEffect(() => {
-    // Recreate store if apiEndpoint or queryParams changed
-    storeRef.current = createStore<TData>(props)
-    
-    // Initialize if not already loaded
-    if (!state.isSuccess && !state.isLoading) {
-      storeRef.current.initialize()
+    // Don't initialize if apiEndpoint is empty/disabled
+    if (!apiEndpoint) {
+      return;
     }
+
+    // Initialize only once - check if already initialized or if state is already loaded/loading
+    if (initializedRef.current || state.isSuccess || state.isLoading) {
+      return;
+    }
+
+    // Mark as initialized and trigger initialization
+    initializedRef.current = true;
+    currentStore.initialize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, props.apiEndpoint, JSON.stringify(props.queryParams)])
+  }, [storeKey]) // Only run when store key changes
 
   return {
     ...state,
     hasMore: state.count > state.data.length,
-    fetchNextPage: storeRef.current.fetchNextPage,
-    reset: storeRef.current.reset,
+    fetchNextPage: currentStore.fetchNextPage,
+    reset: currentStore.reset,
   }
 }
 

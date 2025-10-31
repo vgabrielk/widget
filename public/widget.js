@@ -680,31 +680,38 @@
         // Restaurar estados persistidos
         isOpen = localStorage.getItem(STORAGE_KEYS.IS_OPEN) === 'true';
         hasSubmittedInfo = localStorage.getItem(STORAGE_KEYS.HAS_SUBMITTED) === 'true';
-        visitorId = localStorage.getItem(STORAGE_KEYS.VISITOR_ID);
         visitorInfo.name = localStorage.getItem(STORAGE_KEYS.VISITOR_NAME) || '';
         visitorInfo.email = localStorage.getItem(STORAGE_KEYS.VISITOR_EMAIL) || '';
         roomId = localStorage.getItem(STORAGE_KEYS.ROOM_ID);
 
-        if (!visitorId) {
-            visitorId = `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Initialize visitor ID with FingerprintJS
+        initializeVisitorId().then(() => {
+            console.log('ChatWidget: Visitor ID:', visitorId);
+            console.log('ChatWidget: Has submitted info:', hasSubmittedInfo);
+            console.log('ChatWidget: Previous room ID:', roomId);
+
+            // Check for existing active room before creating UI
+            checkForActiveRoom().then(() => {
+                createWidgetUI();
+                addEventListeners();
+                
+                // Auto-open if was open
+                if (isOpen) {
+                    setTimeout(() => {
+                        openChat();
+                    }, 100);
+                }
+            });
+        }).catch((error) => {
+            console.error('ChatWidget: Error initializing visitor ID:', error);
+            // Fallback to old method if FingerprintJS fails
+            visitorId = localStorage.getItem(STORAGE_KEYS.VISITOR_ID) || `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             localStorage.setItem(STORAGE_KEYS.VISITOR_ID, visitorId);
-        }
-
-        console.log('ChatWidget: Visitor ID:', visitorId);
-        console.log('ChatWidget: Has submitted info:', hasSubmittedInfo);
-        console.log('ChatWidget: Previous room ID:', roomId);
-
-        // Check for existing active room before creating UI
-        checkForActiveRoom().then(() => {
-        createWidgetUI();
-            addEventListeners();
             
-            // Auto-open if was open
-            if (isOpen) {
-                setTimeout(() => {
-                    openChat();
-                }, 100);
-            }
+            checkForActiveRoom().then(() => {
+                createWidgetUI();
+                addEventListeners();
+            });
         });
 
         // Listener para visibilidade da página
@@ -1745,6 +1752,175 @@
         
         // Limpar subscriptions ao fechar (economiza recursos)
         cleanupSubscriptions();
+    }
+
+    // Load FingerprintJS library dynamically
+    function loadFingerprintJS() {
+        return new Promise((resolve, reject) => {
+            // Check if FingerprintJS is already loaded
+            if (window.FingerprintJS) {
+                resolve(window.FingerprintJS);
+                return;
+            }
+
+            // Check if script is already being loaded
+            if (document.querySelector('script[data-fingerprintjs-loader]')) {
+                const checkInterval = setInterval(() => {
+                    if (window.FingerprintJS) {
+                        clearInterval(checkInterval);
+                        resolve(window.FingerprintJS);
+                    }
+                }, 50);
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    reject(new Error('Timeout loading FingerprintJS library'));
+                }, 10000);
+                return;
+            }
+
+            // Load FingerprintJS from CDN
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js';
+            script.setAttribute('data-fingerprintjs-loader', 'true');
+            script.async = true;
+            
+            script.onload = () => {
+                if (window.FingerprintJS) {
+                    resolve(window.FingerprintJS);
+                } else {
+                    reject(new Error('FingerprintJS not available after load'));
+                }
+            };
+            
+            script.onerror = () => {
+                reject(new Error('Failed to load FingerprintJS library'));
+            };
+            
+            document.head.appendChild(script);
+        });
+    }
+
+    // Initialize visitor ID using FingerprintJS
+    async function initializeVisitorId() {
+        try {
+            // Try to get from localStorage first (for backward compatibility)
+            let storedId = localStorage.getItem(STORAGE_KEYS.VISITOR_ID);
+            
+            // Load FingerprintJS
+            const FingerprintJS = await loadFingerprintJS();
+            const fp = await FingerprintJS.load();
+            const result = await fp.get();
+            
+            // Use FingerprintJS visitorId
+            const fingerprintId = result.visitorId;
+            
+            // If we have a stored ID and it's different, log it (could be old format)
+            if (storedId && storedId !== fingerprintId && !storedId.startsWith('visitor_')) {
+                console.log('ChatWidget: Migrating from old visitor ID format');
+            }
+            
+            visitorId = fingerprintId;
+            localStorage.setItem(STORAGE_KEYS.VISITOR_ID, visitorId);
+            
+            // Track visitor with fingerprint data
+            await trackVisitor(result, {
+                page_url: window.location.href,
+                page_title: document.title,
+            });
+            
+            return visitorId;
+        } catch (error) {
+            console.error('ChatWidget: Error initializing with FingerprintJS:', error);
+            // Fallback to old method
+            if (!visitorId) {
+                visitorId = `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                localStorage.setItem(STORAGE_KEYS.VISITOR_ID, visitorId);
+            }
+            throw error;
+        }
+    }
+
+    // Track visitor and check if banned
+    async function trackVisitor(fingerprintResult, pageInfo) {
+        try {
+            // Check if visitor is banned first
+            const checkResponse = await fetch(`${API_BASE}/api/visitor/track?visitor_id=${encodeURIComponent(visitorId)}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (checkResponse.ok) {
+                const checkData = await checkResponse.json();
+                if (checkData.banned) {
+                    console.warn('ChatWidget: Visitor is banned:', checkData.reason);
+                    // Disable widget for banned users
+                    disableWidgetForBannedUser(checkData.reason);
+                    return false;
+                }
+            }
+
+            // Track visitor with full data
+            const trackResponse = await fetch(`${API_BASE}/api/visitor/track`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    visitor_id: visitorId,
+                    fingerprint_data: {
+                        confidence: fingerprintResult.confidence?.score || null,
+                        incognito: fingerprintResult.incognito || false,
+                        components: fingerprintResult.components || {},
+                    },
+                    page_url: pageInfo.page_url,
+                    page_title: pageInfo.page_title,
+                }),
+            });
+
+            if (trackResponse.ok) {
+                const trackData = await trackResponse.json();
+                if (trackData.banned) {
+                    console.warn('ChatWidget: Visitor is banned:', trackData.reason);
+                    disableWidgetForBannedUser(trackData.reason);
+                    return false;
+                }
+                console.log('ChatWidget: Visitor tracked successfully');
+                return true;
+            } else {
+                const errorData = await trackResponse.json();
+                if (errorData.banned) {
+                    disableWidgetForBannedUser(errorData.reason || 'Access denied');
+                    return false;
+                }
+                console.warn('ChatWidget: Failed to track visitor:', errorData);
+                return false;
+            }
+        } catch (error) {
+            console.error('ChatWidget: Error tracking visitor:', error);
+            // Don't block widget if tracking fails
+            return false;
+        }
+    }
+
+    // Disable widget for banned users
+    function disableWidgetForBannedUser(reason) {
+        const container = document.getElementById('chat-widget-container');
+        const button = document.getElementById('chat-widget-button');
+        const chatWindow = document.getElementById('chat-widget-window');
+        
+        if (container) {
+            container.style.display = 'none';
+        }
+        if (button) {
+            button.style.display = 'none';
+        }
+        if (chatWindow) {
+            chatWindow.style.display = 'none';
+        }
+        
+        console.warn('ChatWidget: Widget disabled - Visitor is banned. Reason:', reason);
     }
 
     // Load Supabase library dynamically if not already loaded

@@ -22,7 +22,9 @@ import {
   ExternalLink,
   Loader2,
   ArrowLeft,
-  Menu
+  Menu,
+  Ban,
+  RotateCcw
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { useUser } from '@/lib/contexts/user-context';
@@ -43,7 +45,11 @@ export default function InboxPage() {
   
   const { messages, setMessages, addMessage, clearMessages } = useInboxStore();
   const { confirm, AlertDialogComponent } = useAlertDialog();
-  const { error: showError, ToastContainer } = useToast();
+  const { error: showError, success: showSuccess, ToastContainer } = useToast();
+  const [banDialogOpen, setBanDialogOpen] = useState(false);
+  const [banReason, setBanReason] = useState('');
+  const [isVisitorBanned, setIsVisitorBanned] = useState(false);
+  const [checkingBanStatus, setCheckingBanStatus] = useState(false);
   const [widget, setWidget] = useState<Widget | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -865,6 +871,114 @@ export default function InboxPage() {
     }
   }, [confirm, showError, widgetId]);
 
+  // Check visitor ban status
+  const checkBanStatus = useCallback(async (visitorId: string) => {
+    if (!visitorId) return;
+    
+    setCheckingBanStatus(true);
+    try {
+      const res = await fetch(`/api/visitor/track?visitor_id=${encodeURIComponent(visitorId)}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setIsVisitorBanned(data.banned || false);
+      }
+    } catch (error) {
+      console.error('Error checking ban status:', error);
+      setIsVisitorBanned(false);
+    } finally {
+      setCheckingBanStatus(false);
+    }
+  }, []);
+
+  // Check ban status when room loads
+  useEffect(() => {
+    if (selectedRoom?.visitor_id) {
+      checkBanStatus(selectedRoom.visitor_id);
+    } else {
+      setIsVisitorBanned(false);
+    }
+  }, [selectedRoom?.visitor_id, checkBanStatus]);
+
+  const banVisitor = useCallback(async () => {
+    if (!selectedRoom?.visitor_id) return;
+
+    try {
+      const res = await fetch(`/api/widgets/${widgetId}/visitors/${selectedRoom.visitor_id}/ban`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          banned: true,
+          ban_reason: banReason.trim() || 'Banido pelo suporte durante a conversa',
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMessage = errorData.details 
+          ? `${errorData.error}: ${errorData.details}` 
+          : errorData.error || 'Failed to ban visitor';
+        throw new Error(errorMessage);
+      }
+
+      showSuccess('Visitante banido com sucesso');
+      setBanDialogOpen(false);
+      setBanReason('');
+      setIsVisitorBanned(true);
+      
+      // Optionally close the conversation as well
+      if (selectedRoom.status === 'open') {
+        await closeConversation(selectedRoom.id);
+      }
+    } catch (error: any) {
+      console.error('Error banning visitor:', error);
+      showError(error.message || 'Erro ao banir visitante. Tente novamente.');
+    }
+  }, [selectedRoom, widgetId, banReason, showError, showSuccess, closeConversation]);
+
+  const unbanVisitor = useCallback(async () => {
+    if (!selectedRoom?.visitor_id) return;
+
+    const confirmed = await confirm(
+      'Tem certeza que deseja desbanir este visitante? Ele poderá usar o widget novamente.',
+      'Desbanir Visitante'
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/widgets/${widgetId}/visitors/${selectedRoom.visitor_id}/ban`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          banned: false,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMessage = errorData.details 
+          ? `${errorData.error}: ${errorData.details}` 
+          : errorData.error || 'Failed to unban visitor';
+        throw new Error(errorMessage);
+      }
+
+      showSuccess('Visitante desbanido com sucesso');
+      setIsVisitorBanned(false);
+    } catch (error: any) {
+      console.error('Error unbanning visitor:', error);
+      showError(error.message || 'Erro ao desbanir visitante. Tente novamente.');
+    }
+  }, [selectedRoom, widgetId, confirm, showError, showSuccess]);
+
   const reopenConversation = useCallback(async (roomId: string) => {
     try {
       // CRITICAL: Verify room is still selected
@@ -1541,6 +1655,32 @@ export default function InboxPage() {
                     </Button>
                   )}
                   
+                  {isVisitorBanned ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={unbanVisitor}
+                      disabled={checkingBanStatus}
+                      className="text-sm h-9 bg-green-600 hover:bg-green-700 text-white"
+                      title="Desbanir visitante"
+                    >
+                      <RotateCcw className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Desbanir</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBanDialogOpen(true)}
+                      disabled={checkingBanStatus}
+                      className="text-sm h-9 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      title="Banir visitante"
+                    >
+                      <Ban className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Banir</span>
+                    </Button>
+                  )}
+                  
                   {/* Mobile: Close chat button */}
                   <Button
                     variant="ghost"
@@ -1730,6 +1870,65 @@ export default function InboxPage() {
       </div>
       {AlertDialogComponent}
       {ToastContainer}
+
+      {/* Ban Visitor Dialog */}
+      {banDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-lg border shadow-lg w-full max-w-md mx-4 p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Ban className="h-5 w-5 text-destructive" />
+                Banir Visitante
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Tem certeza que deseja banir este visitante? Ele não poderá mais usar o widget.
+              </p>
+              {selectedRoom && (
+                <div className="mt-3 p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">Visitante:</p>
+                  <p className="text-sm font-medium">{selectedRoom.visitor_name || 'Visitante'}</p>
+                  {selectedRoom.visitor_email && (
+                    <p className="text-xs text-muted-foreground mt-1">{selectedRoom.visitor_email}</p>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Motivo do banimento (opcional)</label>
+              <textarea
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value)}
+                placeholder="Ex: Comportamento inadequado, spam, etc..."
+                className="w-full min-h-[80px] p-3 text-sm border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground">
+                {banReason.length}/500 caracteres
+              </p>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setBanDialogOpen(false);
+                  setBanReason('');
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={banVisitor}
+              >
+                <Ban className="h-4 w-4 mr-2" />
+                Banir Visitante
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

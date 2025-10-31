@@ -108,6 +108,26 @@ export async function POST(
       );
     }
 
+    const supabase = await createClient();
+
+    // Check if visitor is banned
+    const { data: visitor, error: visitorError } = await supabase
+      .from('visitors')
+      .select('banned, ban_reason')
+      .eq('visitor_id', visitor_id)
+      .single();
+
+    if (!visitorError && visitor?.banned) {
+      return NextResponse.json(
+        {
+          error: 'Visitor is banned',
+          banned: true,
+          reason: visitor.ban_reason || 'No reason provided',
+        },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
     // Validate that we have either content or image_url
     if (!content && !image_url) {
       return NextResponse.json(
@@ -123,8 +143,6 @@ export async function POST(
         { status: 400, headers: corsHeaders }
       );
     }
-
-    const supabase = await createClient();
 
     // Verify room exists and belongs to visitor
     const { data: room, error: roomError } = await supabase

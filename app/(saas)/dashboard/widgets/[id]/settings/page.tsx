@@ -29,7 +29,8 @@ import {
   Headphones,
   HelpCircle,
   Bot,
-  Heart
+  Heart,
+  Ban
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -488,16 +489,26 @@ export default function WidgetSettingsPage() {
         {/* Segurança - Domínios */}
         <Card className="card-clean">
           <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
-                <Shield className="h-5 w-5 text-orange-600" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
+                  <Shield className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <CardTitle>Segurança - Domínios Permitidos</CardTitle>
+                  <CardDescription>
+                    Adicione os domínios onde o widget pode ser usado. Deixe vazio para permitir todos os domínios.
+                  </CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle>Segurança - Domínios Permitidos</CardTitle>
-                <CardDescription>
-                  Adicione os domínios onde o widget pode ser usado. Deixe vazio para permitir todos os domínios.
-                </CardDescription>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/dashboard/widgets/${widgetId}/banned`)}
+              >
+                <Ban className="h-4 w-4 mr-2" />
+                Visitantes Banidos
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
