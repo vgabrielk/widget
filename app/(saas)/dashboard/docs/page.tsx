@@ -19,7 +19,7 @@ export default async function DocsPage() {
   return (
     <DashboardLayout
       email={user.email || ''}
-      title="Documentation"
+      title="Documentação"
       description="Guias e tutoriais para usar o ChatWidget"
     >
       <div className="space-y-6">

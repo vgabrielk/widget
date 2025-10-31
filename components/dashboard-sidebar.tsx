@@ -44,12 +44,7 @@ const mainNavItems: NavItem[] = [
     icon: MessageSquare,
   },
   {
-    name: 'Inbox',
-    href: '/dashboard/inbox',
-    icon: Inbox,
-  },
-  {
-    name: 'Contacts',
+    name: 'Contatos',
     href: '/dashboard/contacts',
     icon: Users,
   },

@@ -30,7 +30,7 @@ export default async function BillingPage() {
   return (
     <DashboardLayout
       email={user.email || ''}
-      title="Billing & Subscription"
+      title="Planos e Assinatura"
       description="Gerencie sua assinatura e pagamentos"
     >
       <div className="space-y-6">
@@ -64,7 +64,7 @@ export default async function BillingPage() {
               </div>
               {subscription?.stripe_subscription_id && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Subscription ID</span>
+                  <span className="text-sm text-muted-foreground">ID da Assinatura</span>
                   <code className="text-xs bg-muted px-2 py-1 rounded">
                     {subscription.stripe_subscription_id.substring(0, 20)}...
                   </code>
