@@ -48,6 +48,9 @@
     let hasActiveRoom = false;
     let selectedImage = null;
     let notificationAudio = null;
+    let notificationAudioPlaying = false;
+    let lastNotificationTime = 0;
+    const NOTIFICATION_COOLDOWN = 2000; // 2 segundos entre notificações
     let heartbeatInterval = null;
     
     // Rate limiting
@@ -142,13 +145,14 @@
 
             /* Header */
             .chat-widget-header {
-                background: white;
-                padding: 20px 24px;
+                background: ${brandColor};
+                padding: 16px 20px;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                border-bottom: 1px solid #F3F4F6;
+                border-bottom: none;
                 flex-shrink: 0;
+                gap: 12px;
             }
 
             .chat-widget-header h3 {
@@ -159,9 +163,9 @@
             }
 
             .chat-widget-close-btn {
-                background: none;
+                background: rgba(255, 255, 255, 0.2);
                 border: none;
-                color: #6B7280;
+                color: white;
                 cursor: pointer;
                 font-size: 20px;
                 padding: 4px;
@@ -171,10 +175,11 @@
                 align-items: center;
                 justify-content: center;
                 border-radius: 6px;
+                transition: background 0.2s;
             }
 
             .chat-widget-close-btn:hover {
-                background: #F3F4F6;
+                background: rgba(255, 255, 255, 0.3);
             }
 
             /* Welcome Form */
@@ -394,8 +399,8 @@
             }
 
             .chat-message-avatar.agent {
-                background: ${brandColor};
-                color: white;
+                background: #E5E7EB;
+                color: #374151;
             }
 
             .chat-message-bubble {
@@ -1318,14 +1323,47 @@
 
     function playNotificationSound() {
         try {
+            const now = Date.now();
+            
+            // Prevent multiple notifications within cooldown period
+            if (now - lastNotificationTime < NOTIFICATION_COOLDOWN) {
+                return;
+            }
+            
+            // Prevent if already playing
+            if (notificationAudioPlaying) {
+                return;
+            }
+            
             if (!notificationAudio) {
                 notificationAudio = new Audio(`${API_BASE}/notification.mp3`);
+                notificationAudio.volume = 0.5;
+                
+                // Reset audio when it finishes playing
+                notificationAudio.addEventListener('ended', () => {
+                    notificationAudioPlaying = false;
+                    if (notificationAudio) {
+                        notificationAudio.currentTime = 0;
+                    }
+                });
+                
+                notificationAudio.addEventListener('error', () => {
+                    notificationAudioPlaying = false;
+                });
             }
+            
+            // Reset audio to beginning and play
+            notificationAudio.currentTime = 0;
+            notificationAudioPlaying = true;
+            lastNotificationTime = now;
+            
             notificationAudio.play().catch(err => {
                 console.log('ChatWidget: Could not play notification sound:', err);
+                notificationAudioPlaying = false;
             });
         } catch (error) {
             console.log('ChatWidget: Error playing notification sound:', error);
+            notificationAudioPlaying = false;
         }
     }
 
@@ -1371,7 +1409,10 @@
             <div id="chat-widget-window" style="display: ${isOpen ? 'flex' : 'none'};">
                 <!-- Header -->
                 <div class="chat-widget-header">
-                    <h3>${widgetData.company_name || 'Messages'}</h3>
+                    ${widgetData.avatar_url 
+                        ? `<img src="${widgetData.avatar_url}" alt="${widgetData.company_name || 'Logo'}" class="chat-widget-header-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
+                        : `<div class="chat-widget-header-avatar-fallback" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px; flex-shrink: 0;">${(widgetData.company_name || 'C').substring(0, 1).toUpperCase()}</div>`
+                    }
                     <button id="chat-widget-close" class="chat-widget-close-btn">×</button>
                     </div>
 

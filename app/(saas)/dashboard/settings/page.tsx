@@ -185,7 +185,7 @@ export default function SettingsPage() {
                 <CardTitle className="text-base sm:text-lg">Perfil</CardTitle>
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Atualize suas informações pessoais e avatar
+                Atualize suas informações pessoais e logo
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
@@ -194,7 +194,11 @@ export default function SettingsPage() {
                 <div className="relative group">
                   <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
                     {profile?.avatar_url ? (
-                      <AvatarImage src={profile.avatar_url} alt={fullName || user?.email || ''} />
+                      <AvatarImage 
+                        key={profile.avatar_url} 
+                        src={profile.avatar_url} 
+                        alt={fullName || user?.email || ''} 
+                      />
                     ) : (
                       <AvatarFallback className="bg-primary text-primary-foreground text-xl sm:text-2xl">
                         {getInitials(fullName, user?.email || '')}
@@ -241,7 +245,7 @@ export default function SettingsPage() {
                     ) : (
                       <>
                         <Upload className="h-4 w-4 mr-2" />
-                        Alterar Avatar
+                        Alterar logo
                       </>
                     )}
                   </Button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { Bell, MessageSquare, CheckCheck, ExternalLink } from 'lucide-react';
@@ -89,13 +89,54 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     }
   }, [userId, supabase]);
 
+  // Notification audio state - use ref to persist across renders
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const notificationPlayingRef = useRef<boolean>(false);
+  const lastNotificationTimeRef = useRef<number>(0);
+  const NOTIFICATION_COOLDOWN = 2000; // 2 segundos entre notificações
+
   const playNotificationSound = useCallback(() => {
     try {
-      const audio = new Audio('/notification.mp3');
-      audio.volume = 0.5;
-      audio.play().catch(() => {});
+      const now = Date.now();
+      
+      // Prevent multiple notifications within cooldown period
+      if (now - lastNotificationTimeRef.current < NOTIFICATION_COOLDOWN) {
+        return;
+      }
+      
+      // Prevent if already playing
+      if (notificationPlayingRef.current) {
+        return;
+      }
+      
+      // Create audio element if it doesn't exist
+      if (!notificationAudioRef.current) {
+        notificationAudioRef.current = new Audio('/notification.mp3');
+        notificationAudioRef.current.volume = 0.5;
+        
+        // Reset audio when it finishes playing
+        notificationAudioRef.current.addEventListener('ended', () => {
+          notificationPlayingRef.current = false;
+          if (notificationAudioRef.current) {
+            notificationAudioRef.current.currentTime = 0;
+          }
+        });
+        
+        notificationAudioRef.current.addEventListener('error', () => {
+          notificationPlayingRef.current = false;
+        });
+      }
+      
+      // Reset audio to beginning and play
+      notificationAudioRef.current.currentTime = 0;
+      notificationPlayingRef.current = true;
+      lastNotificationTimeRef.current = now;
+      
+      notificationAudioRef.current.play().catch(() => {
+        notificationPlayingRef.current = false;
+      });
     } catch (error) {
-      // Silently fail
+      notificationPlayingRef.current = false;
     }
   }, []);
 

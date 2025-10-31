@@ -35,12 +35,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ profile: null });
     }
 
-    // If profile has avatar_url, generate signed URL
+    // If profile has avatar_url, generate signed URL with longer expiry
+    // Use longer expiry (24 hours) to reduce URL regeneration and image reloads
     if (profile.avatar_url) {
       try {
         const { data: signedUrlData } = await supabase.storage
           .from('avatars')
-          .createSignedUrl(profile.avatar_url, 3600); // 1 hour expiry
+          .createSignedUrl(profile.avatar_url, 86400); // 24 hours expiry
 
         if (signedUrlData?.signedUrl) {
           profile.avatar_url = signedUrlData.signedUrl;
@@ -138,12 +139,13 @@ export async function PATCH(request: NextRequest) {
       profile = data;
     }
 
-    // If profile has avatar_url, generate signed URL
+    // If profile has avatar_url, generate signed URL with longer expiry
+    // Use longer expiry (24 hours) to reduce URL regeneration and image reloads
     if (profile.avatar_url) {
       try {
         const { data: signedUrlData } = await supabase.storage
           .from('avatars')
-          .createSignedUrl(profile.avatar_url, 3600); // 1 hour expiry
+          .createSignedUrl(profile.avatar_url, 86400); // 24 hours expiry
 
         if (signedUrlData?.signedUrl) {
           profile.avatar_url = signedUrlData.signedUrl;

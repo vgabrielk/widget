@@ -89,7 +89,7 @@ export async function GET(
     // Get widget config - fetch all and filter manually (RLS workaround)
     const { data: widgets, error } = await supabase
       .from('widgets')
-      .select('id, name, brand_color, position, welcome_message, company_name, domains, is_active, public_key')
+      .select('id, name, brand_color, position, welcome_message, company_name, domains, is_active, public_key, user_id')
       .eq('is_active', true);
 
     if (error) {
@@ -112,6 +112,28 @@ export async function GET(
         },
         { status: 404 }
       );
+    }
+
+    // Get user profile avatar if user_id exists
+    let avatarUrl = null;
+    if (widget.user_id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', widget.user_id)
+        .single();
+      
+      if (profile?.avatar_url) {
+        // Convert avatar path to public URL
+        // avatar_url is stored as: user-id/avatar-xxx.ext
+        // Need to create public URL: {supabaseUrl}/storage/v1/object/public/avatars/{path}
+        try {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          avatarUrl = `${supabaseUrl}/storage/v1/object/public/avatars/${profile.avatar_url}`;
+        } catch (err) {
+          console.warn('Error generating avatar URL:', err);
+        }
+      }
     }
 
     // Build CORS headers based on widget's allowed domains
@@ -144,7 +166,10 @@ export async function GET(
 
     // Return widget config with Supabase credentials
     return NextResponse.json({
-      widget,
+      widget: {
+        ...widget,
+        avatar_url: avatarUrl,
+      },
       supabase: {
         url: process.env.NEXT_PUBLIC_SUPABASE_URL,
         key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
