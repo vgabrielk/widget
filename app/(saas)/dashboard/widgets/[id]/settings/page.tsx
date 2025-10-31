@@ -158,13 +158,25 @@ export default function WidgetSettingsPage() {
     }
   }, [widgetId, name, brandColor, position, welcomeMessage, companyName, isActive, domains, selectedIcon, showError]);
 
-  const embedCode = widget ? `<!-- ChatWidget -->
+  // Get the base URL for the widget script - calculated on client side
+  const [baseUrl, setBaseUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setBaseUrl(window.location.origin);
+    } else {
+      // Fallback for SSR
+      setBaseUrl(process.env.NEXT_PUBLIC_SITE_URL || 'https://jellox.vercel.app');
+    }
+  }, []);
+
+  const embedCode = widget && baseUrl ? `<!-- ChatWidget -->
 <script>
   window.ChatWidgetConfig = {
     publicKey: '${widget.public_key}',
   };
 </script>
-<script src="/widget.js"></script>` : '';
+<script src="${baseUrl}/widget.js"></script>` : '';
 
   const copyEmbedCode = useCallback(() => {
     navigator.clipboard.writeText(embedCode);
