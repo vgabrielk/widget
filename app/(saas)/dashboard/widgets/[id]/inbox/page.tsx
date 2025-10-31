@@ -1125,7 +1125,7 @@ export default function InboxPage() {
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
-      <div className="h-full overflow-hidden flex flex-col -m-3 sm:-m-6 lg:-m-6 lg:-mb-8 flex-1 min-h-0">
+      <div className="overflow-hidden flex flex-col -m-3 sm:-m-6 lg:-m-6 lg:-mb-8" style={{ minHeight: 'calc(100vh - 180px)' }}>
       <style jsx>{`
         @keyframes fadeIn {
           from {
