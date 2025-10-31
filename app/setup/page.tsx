@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { useToast } from '@/components/ui/toast';
 
 export default function SetupPage() {
   const [isChecking, setIsChecking] = useState(false);
@@ -15,6 +16,7 @@ export default function SetupPage() {
     messages: null,
     realtime: null,
   });
+  const { success: showSuccess, ToastContainer } = useToast();
 
   const checkDatabase = async () => {
     setIsChecking(true);
@@ -137,7 +139,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.rooms;`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(sqlMigration);
-    alert('SQL copiado para a área de transferência!');
+    showSuccess('SQL copiado para a área de transferência!');
   };
 
   return (
@@ -327,6 +329,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.rooms;`;
           </div>
         </div>
       </div>
+      {ToastContainer}
     </div>
   );
 }

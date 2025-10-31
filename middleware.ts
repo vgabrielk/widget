@@ -19,6 +19,6 @@ export const config = {
      * - audio - .mp3, .wav, .ogg
      * Feel free to modify this pattern to include more paths.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/widget|api/debug|api/upload-image|setup-saas|fix-widget-rls|setup-service-key|widget.js|test-widget.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav|ogg)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/widget|api/debug|api/upload-image|api/visitor|setup-saas|fix-widget-rls|setup-service-key|widget.js|test-widget.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav|ogg)$).*)",
   ],
 };

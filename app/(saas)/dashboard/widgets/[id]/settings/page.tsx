@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Widget } from '@/lib/types/saas';
 import { useParams, useRouter } from 'next/navigation';
@@ -26,6 +26,7 @@ import {
   MessageSquare,
   Mail
 } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 export default function WidgetSettingsPage() {
   const params = useParams();
@@ -45,9 +46,15 @@ export default function WidgetSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
-  const supabase = createClient();
+  const [isLoading, setIsLoading] = useState(true);
+  // CRITICAL: Create supabase client only once to prevent infinite loops
+  const supabase = useMemo(() => createClient(), []);
+  const { error: showError, ToastContainer } = useToast();
 
   const loadWidget = useCallback(async () => {
+    if (!widgetId) return;
+    
+    setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('widgets')
@@ -72,6 +79,8 @@ export default function WidgetSettingsPage() {
     } catch (error) {
       console.error('Error loading widget:', error);
       router.push('/dashboard');
+    } finally {
+      setIsLoading(false);
     }
   }, [widgetId, supabase, router]);
 
@@ -84,7 +93,9 @@ export default function WidgetSettingsPage() {
     };
     loadUser();
     loadWidget();
-  }, [widgetId, supabase, loadWidget]);
+    // CRITICAL: supabase is stable via useMemo, loadWidget depends on widgetId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetId]);
 
   const addDomain = useCallback(() => {
     if (newDomain.trim() && !domains.includes(newDomain.trim())) {
@@ -121,11 +132,11 @@ export default function WidgetSettingsPage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error('Error saving widget:', error);
-      alert('Erro ao salvar configurações');
+      showError('Erro ao salvar configurações');
     } finally {
       setLoading(false);
     }
-  }, [widgetId, supabase, name, brandColor, position, welcomeMessage, companyName, isActive, domains]);
+  }, [widgetId, supabase, name, brandColor, position, welcomeMessage, companyName, isActive, domains, showError]);
 
   const embedCode = widget ? `<!-- ChatWidget -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -142,11 +153,20 @@ export default function WidgetSettingsPage() {
     setTimeout(() => setCopied(false), 2000);
   }, [embedCode]);
 
-  if (!widget) {
+  if (isLoading || !widget) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <DashboardLayout
+        email={userEmail}
+        title="Carregando..."
+        description="Carregando configurações"
+      >
+        <div className="min-h-[calc(100vh-140px)] flex items-center justify-center bg-background">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Carregando configurações do widget...</p>
+          </div>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -476,6 +496,7 @@ export default function WidgetSettingsPage() {
           </Button>
         </div>
       </div>
+      {ToastContainer}
     </DashboardLayout>
   );
 }

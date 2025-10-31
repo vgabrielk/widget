@@ -6,11 +6,12 @@ import { useRouter } from 'next/navigation';
 import { Room, Message } from '@/lib/chat/types';
 import { MessageCircle, Send, Users, Clock, Loader2 } from 'lucide-react';
 import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query';
+import { useAdminStore } from '@/stores/useAdminStore';
 
 export default function AdminPage() {
   const router = useRouter();
+  const { messages, setMessages, addMessage, clearMessages } = useAdminStore();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [user, setUser] = useState<any>(null);
   const [widgetIds, setWidgetIds] = useState<string[]>([]);
@@ -85,6 +86,31 @@ export default function AdminPage() {
     if (node) observerRef.current.observe(node);
   }, [isLoading, isFetching, hasMore, fetchNextPage]);
 
+  const loadMessages = useCallback(async (roomId: string) => {
+    try {
+      // Verify room hasn't changed
+      if (roomId !== currentRoomIdRef.current) {
+        console.log('⚠️ Room changed, aborting load');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      
+      // Only update if room still the same
+      if (roomId === currentRoomIdRef.current) {
+        setMessages(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error);
+    }
+  }, [supabase, setMessages]);
+
   // Load messages when room is selected
   useEffect(() => {
     if (selectedRoom) {
@@ -92,7 +118,7 @@ export default function AdminPage() {
       currentRoomIdRef.current = selectedRoom.id;
       
       // Clear messages and input
-      setMessages([]);
+      clearMessages();
       setInputValue('');
       
       loadMessages(selectedRoom.id);
@@ -116,13 +142,12 @@ export default function AdminPage() {
               return;
             }
             
-            setMessages((prev) => {
-              // Double-check and avoid duplicates
-              if (currentRoomIdRef.current !== selectedRoom.id) return prev;
-              const exists = prev.some(m => m.id === newMessage.id);
-              if (exists) return prev;
-              return [...prev, newMessage];
-            });
+            // Check if message already exists using Zustand store
+            const currentMessages = useAdminStore.getState().messages;
+            const exists = currentMessages.some(m => m.id === newMessage.id);
+            if (exists) return;
+            
+            addMessage(newMessage);
             
             // Auto scroll to bottom
             requestAnimationFrame(() => {
@@ -140,35 +165,10 @@ export default function AdminPage() {
       };
     } else {
       currentRoomIdRef.current = null;
-      setMessages([]);
+      clearMessages();
       setInputValue('');
     }
-  }, [selectedRoom?.id]);
-
-  const loadMessages = async (roomId: string) => {
-    try {
-      // Verify room hasn't changed
-      if (roomId !== currentRoomIdRef.current) {
-        console.log('⚠️ Room changed, aborting load');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      
-      // Only update if room still the same
-      if (roomId === currentRoomIdRef.current) {
-        setMessages(data || []);
-      }
-    } catch (error) {
-      console.error('Error loading messages:', error);
-    }
-  };
+  }, [selectedRoom?.id, clearMessages, loadMessages, supabase, addMessage]);
 
   const sendMessage = async () => {
     if (!selectedRoom || !inputValue.trim()) return;

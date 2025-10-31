@@ -45,3 +45,4 @@ BEGIN
     RAISE NOTICE '⚠️  Make sure Realtime is enabled on the rooms table!';
 END $$;
 
+

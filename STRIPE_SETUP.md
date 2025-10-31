@@ -293,3 +293,4 @@ SELECT * FROM stripe.customers;
 - [Stripe Webhooks Guide](https://stripe.com/docs/webhooks)
 - [Supabase Vault Documentation](https://supabase.com/docs/guides/database/vault)
 
+

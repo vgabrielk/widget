@@ -2,6 +2,17 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
+  // CRITICAL: Skip middleware for API routes that don't need auth
+  const pathname = request.nextUrl.pathname;
+  
+  // Skip auth for public API routes (widget, visitor endpoints, etc)
+  if (pathname.startsWith('/api/widget') ||
+      pathname.startsWith('/api/visitor') ||
+      pathname.startsWith('/api/upload-image') ||
+      pathname.startsWith('/api/debug')) {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -64,3 +75,4 @@ export async function updateSession(request: NextRequest) {
 
   return supabaseResponse
 }
+

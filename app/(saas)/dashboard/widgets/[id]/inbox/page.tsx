@@ -20,10 +20,15 @@ import {
   Mail,
   ExternalLink,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Menu
 } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useUser } from '@/lib/contexts/user-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useInboxStore } from '@/stores/useInboxStore';
+import { useAlertDialog } from '@/hooks/use-alert-dialog';
+import { useToast } from '@/components/ui/toast';
 
 export default function InboxPage() {
   const params = useParams();
@@ -31,6 +36,9 @@ export default function InboxPage() {
   const widgetId = params.id as string;
   const { user, profile } = useUser();
   
+  const { messages, setMessages, addMessage, clearMessages } = useInboxStore();
+  const { confirm, AlertDialogComponent } = useAlertDialog();
+  const { error: showError, ToastContainer } = useToast();
   const [widget, setWidget] = useState<Widget | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [filteredRooms, setFilteredRooms] = useState<Room[]>([]);
@@ -40,126 +48,191 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [isWidgetLoading, setIsWidgetLoading] = useState(true);
-  const [isRoomsLoading, setIsRoomsLoading] = useState(true);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [isRoomsLoading, setIsRoomsLoading] = useState(false);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
-  const [userEmail, setUserEmail] = useState<string>('');
+  const [widgetError, setWidgetError] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const currentRoomIdRef = useRef<string | null>(null);
+  const messageChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const roomsChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const roomsLoadedRef = useRef(false);
+  const roomsLoadingRef = useRef(false); // Guard para prevenir múltiplas chamadas simultâneas
+  const loadRoomsAbortControllerRef = useRef<AbortController | null>(null);
+  const lastRoomUpdateRef = useRef<{ [roomId: string]: number }>({});
+  const selectedRoomRef = useRef<Room | null>(null);
+  const previousWidgetIdRef = useRef<string | null>(null);
+  const [isVisitorOnline, setIsVisitorOnline] = useState(false);
+  const [isConversationsMenuOpen, setIsConversationsMenuOpen] = useState(false);
   
-  // CRITICAL: Create supabase client only once with useMemo to prevent infinite loops
+  // Manter selectedRoomRef sincronizado
+  useEffect(() => {
+    selectedRoomRef.current = selectedRoom;
+  }, [selectedRoom]);
+  
   const supabase = useMemo(() => createClient(), []);
 
-  // Load rooms
-  const loadRooms = useCallback(async () => {
-    console.log('📥 [loadRooms] START', { widgetId });
-    try {
-      setIsRoomsLoading(true);
-      console.log('📡 [loadRooms] Fetching rooms from Supabase...');
-      
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('widget_id', widgetId)
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(100);
+  // NOTE: loadRooms function removed - we now use API route instead
+  // This avoids the client-side query hanging issue
 
-      console.log('📨 [loadRooms] Response received', { count: data?.length || 0, hasError: !!error });
-
-      if (error) throw error;
-      setRooms(data || []);
-      console.log('✅ [loadRooms] Rooms loaded successfully');
-    } catch (error) {
-      console.error('❌ [loadRooms] Error:', error);
-    } finally {
-      console.log('🏁 [loadRooms] FINALLY - setting isRoomsLoading=false');
-      setIsRoomsLoading(false);
-    }
-  }, [widgetId, supabase]);
-
-  // Load messages for selected room
   const loadMessages = useCallback(async (roomId: string) => {
-    console.log('💬 [loadMessages] START', { roomId });
+    if (!widgetId || !roomId) {
+      console.warn('⏸️ [Inbox] loadMessages: Missing widgetId or roomId');
+      return;
+    }
+    
     try {
       setIsMessagesLoading(true);
-      console.log('📡 [loadMessages] Fetching messages from Supabase...');
+      console.log('📥 [Inbox] Loading messages via API for roomId:', roomId);
       
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true })
-        .limit(200);
-
-      console.log('📨 [loadMessages] Response received', { count: data?.length || 0, hasError: !!error });
-
-      if (error) throw error;
-      setMessages(data || []);
-      console.log('✅ [loadMessages] Messages loaded successfully');
-    } catch (error) {
-      console.error('❌ [loadMessages] Error:', error);
+      // Load messages via API route (server-side, more reliable)
+      const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/messages`);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to load messages: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      console.log('✅ [Inbox] Messages loaded via API:', data.messages?.length || 0);
+      setMessages(data.messages || []);
+    } catch (error: any) {
+      console.error('❌ [Inbox] Error loading messages:', error);
+      setMessages([]); // Clear messages on error
     } finally {
-      console.log('🏁 [loadMessages] FINALLY - setting isMessagesLoading=false');
+      console.log('✅ [Inbox] Setting isMessagesLoading to false');
       setIsMessagesLoading(false);
     }
-  }, [supabase]);
+  }, [widgetId, setMessages]);
 
-  // Load user email
+  // Load widget - usando ref para prevenir múltiplas cargas
+  const widgetLoadInProgressRef = useRef(false);
+  const loadedWidgetIdRef = useRef<string | null>(null);
+  
   useEffect(() => {
-    const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        setUserEmail(user.email);
+    // ⚠️ CRITICAL: Only load widget if widgetId changed, not when widget state changes
+    if (!widgetId || loadedWidgetIdRef.current === widgetId) {
+      // If widget already loaded for this widgetId, ensure loading state is false
+      if (loadedWidgetIdRef.current === widgetId && isWidgetLoading) {
+        console.log('✅ [Inbox] Widget already loaded, ensuring loading state is false');
+        setIsWidgetLoading(false);
+      }
+      return;
+    }
+    
+    // Prevenir múltiplas cargas simultâneas
+    if (widgetLoadInProgressRef.current) {
+      console.log('⏸️ [Inbox] Widget load already in progress, skipping...');
+      return;
+    }
+    
+    widgetLoadInProgressRef.current = true;
+    
+    const load = async () => {
+      try {
+        setIsWidgetLoading(true);
+        console.log('📦 [Inbox] Loading widget:', widgetId);
+        
+        // Load widget via API route to avoid hanging query
+        const res = await fetch(`/api/widgets/${widgetId}`);
+        
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to load widget: ${res.statusText}`);
+        }
+        
+        const widgetData = await res.json();
+        console.log('✅ [Inbox] Widget loaded:', widgetData.name || widgetData.id);
+        
+        loadedWidgetIdRef.current = widgetId;
+        setWidget(widgetData);
+        setWidgetError(null);
+      } catch (error: any) {
+        console.error('❌ [Inbox] Error loading widget:', error);
+        setWidgetError(error?.message || 'Erro ao carregar widget');
+        // Reset loadedWidgetIdRef on error to allow retry
+        if (loadedWidgetIdRef.current === widgetId) {
+          loadedWidgetIdRef.current = null;
+        }
+      } finally {
+        console.log('✅ [Inbox] Setting isWidgetLoading to false');
+        setIsWidgetLoading(false);
+        widgetLoadInProgressRef.current = false;
       }
     };
-    loadUser();
-  }, [supabase]);
+    
+    load();
+    // ⚠️ CRITICAL: Only depend on widgetId, not widget?.id or supabase
+    // widget?.id changes after loading, which would trigger reload
+    // supabase is memoized, so it's stable, but we don't need it here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetId]);
 
-  // Load rooms on mount with timeout safety
+  // Load initial rooms via API route (server-side, more reliable)
   useEffect(() => {
-    console.log('🚀 [useEffect] Loading rooms...');
+    const widgetIdChanged = previousWidgetIdRef.current !== widgetId;
     
-    // Safety timeout
-    const timeoutId = setTimeout(() => {
-      console.error('⏰ [TIMEOUT] Rooms loading took too long! Force stopping...');
-      setIsRoomsLoading(false);
-    }, 10000);
-    
-    loadRooms().finally(() => {
-      clearTimeout(timeoutId);
+    console.log('🔄 [Inbox] useEffect widgetId check:', { 
+      widgetId, 
+      previousWidgetId: previousWidgetIdRef.current,
+      widgetIdChanged,
+      roomsLoaded: roomsLoadedRef.current,
+      roomsLoading: roomsLoadingRef.current
     });
     
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [loadRooms]);
-
-
-  // Load widget with timeout safety
-  useEffect(() => {
-    console.log('🚀 [useEffect] Loading widget...', { widgetId });
+    // Reset flags only if widgetId actually changed
+    if (widgetIdChanged && previousWidgetIdRef.current !== null) {
+      console.log('🔄 [Inbox] WidgetId changed, resetting flags');
+      roomsLoadedRef.current = false;
+      roomsLoadingRef.current = false;
+      setRooms([]);
+    }
     
-    // Safety timeout - if loading takes more than 10s, force stop loading
-    const timeoutId = setTimeout(() => {
-      console.error('⏰ [TIMEOUT] Widget loading took too long! Force stopping...');
-      setIsWidgetLoading(false);
-      router.push('/dashboard');
-    }, 10000);
+    // Update previous widgetId
+    previousWidgetIdRef.current = widgetId;
     
-    loadWidget().finally(() => {
-      clearTimeout(timeoutId);
-    });
-    
-    return () => {
-      clearTimeout(timeoutId);
-    };
+    // Only load if widgetId exists and we haven't loaded yet
+    if (widgetId && !roomsLoadedRef.current && !roomsLoadingRef.current) {
+      console.log('🚀 [Inbox] Loading rooms via API for widgetId:', widgetId);
+      roomsLoadedRef.current = true;
+      roomsLoadingRef.current = true;
+      setIsRoomsLoading(true);
+      
+      // Load via API route (server-side, avoids client query hanging)
+      fetch(`/api/widgets/${widgetId}/rooms`)
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          return res.json();
+        })
+        .then((data: { rooms: Room[] }) => {
+          console.log('✅ [Inbox] Rooms loaded via API:', data.rooms.length);
+          setRooms(data.rooms || []);
+          console.log('✅ [Inbox] Setting isRoomsLoading to false');
+          setIsRoomsLoading(false);
+          roomsLoadingRef.current = false;
+          console.log('✅ [Inbox] Loading flags reset');
+        })
+        .catch((err) => {
+          console.error('❌ [Inbox] Error loading rooms via API:', err);
+          roomsLoadedRef.current = false; // Allow retry
+          setIsRoomsLoading(false);
+          roomsLoadingRef.current = false;
+        });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetId]);
 
   // Subscribe to rooms updates (realtime)
   useEffect(() => {
     if (!widgetId) return;
+
+    // Clean up previous subscription if exists
+    if (roomsChannelRef.current) {
+      supabase.removeChannel(roomsChannelRef.current);
+      roomsChannelRef.current = null;
+    }
 
     const channel = supabase
       .channel(`widget-rooms-${widgetId}`)
@@ -172,12 +245,14 @@ export default function InboxPage() {
           filter: `widget_id=eq.${widgetId}`,
         },
         (payload) => {
+          console.log('⚡ [Inbox] Rooms Realtime event:', payload.eventType, payload);
           const updatedRoom = payload.new as Room;
           const oldRoom = payload.old as Partial<Room> | null;
           const roomId = oldRoom?.id || updatedRoom?.id;
           
           // Update rooms optimistically
           if (payload.eventType === 'INSERT' && updatedRoom) {
+            console.log('➕ [Inbox] New room inserted:', updatedRoom.id);
             setRooms(prev => {
               // Check if already exists
               if (prev.some(r => r.id === updatedRoom.id)) return prev;
@@ -185,6 +260,37 @@ export default function InboxPage() {
               return [updatedRoom, ...prev];
             });
           } else if (payload.eventType === 'UPDATE' && updatedRoom) {
+            console.log('🔄 [Inbox] Room updated:', updatedRoom.id, {
+              oldLastMessage: oldRoom?.last_message_at,
+              newLastMessage: updatedRoom.last_message_at,
+              oldUnread: oldRoom?.unread_count,
+              newUnread: updatedRoom.unread_count,
+            });
+            const roomId = updatedRoom.id;
+            const now = Date.now();
+            
+            // Debounce: Ignore updates that are too close together (menos de 100ms)
+            const lastUpdate = lastRoomUpdateRef.current[roomId] || 0;
+            if (now - lastUpdate < 100) {
+              return;
+            }
+            lastRoomUpdateRef.current[roomId] = now;
+            
+            const oldRoomData = oldRoom as Room | undefined;
+            
+            // Ignore updates que foram causados por markAsRead (unread_count mudou para 0 mas não há mudança em last_message_at)
+            if (oldRoomData && 
+                oldRoomData.unread_count > 0 && 
+                updatedRoom.unread_count === 0 &&
+                oldRoomData.last_message_at === updatedRoom.last_message_at) {
+              // Este update foi causado por markAsRead, não por nova mensagem
+              // Apenas atualizar a lista mas não o selectedRoom para evitar loop
+              setRooms(prev => 
+                prev.map(r => r.id === roomId ? { ...r, unread_count: 0 } : r)
+              );
+              return;
+            }
+            
             setRooms(prev => {
               const index = prev.findIndex(r => r.id === updatedRoom.id);
               if (index === -1) {
@@ -198,34 +304,71 @@ export default function InboxPage() {
               
               // If last_message_at changed, move to top
               if (oldRoom.last_message_at !== updatedRoom.last_message_at) {
+                console.log('📤 [Inbox] Moving room to top (new message):', roomId);
                 newRooms.splice(index, 1);
                 newRooms.unshift(updatedRoom);
+              } else {
+                console.log('📝 [Inbox] Updating room in place:', roomId);
               }
               
               return newRooms;
             });
             
-            // Update selectedRoom if it's the one being updated
-            if (selectedRoom?.id === updatedRoom.id) {
-              setSelectedRoom(updatedRoom);
+            // Update selectedRoom only if significant fields changed (not just unread_count from markAsRead)
+            // Usar ref para evitar closure stale
+            const currentSelectedRoom = selectedRoomRef.current;
+            if (currentSelectedRoom?.id === updatedRoom.id) {
+              // Verificar se campos relevantes realmente mudaram
+              const significantChange = 
+                oldRoomData?.status !== updatedRoom.status ||
+                oldRoomData?.last_message_at !== updatedRoom.last_message_at ||
+                oldRoomData?.last_message_preview !== updatedRoom.last_message_preview ||
+                (oldRoomData?.unread_count || 0) !== (updatedRoom.unread_count || 0);
+              
+              // Atualizar se houver mudança significativa
+              if (significantChange) {
+                setSelectedRoom(updatedRoom);
+              }
             }
           } else if (payload.eventType === 'DELETE' && roomId) {
             setRooms(prev => prev.filter(r => r.id !== roomId));
             
-            // Clear selection if deleted room was selected
-            if (selectedRoom?.id === roomId) {
+            // Clear selection if deleted room was selected - usar ref
+            const currentSelectedRoom = selectedRoomRef.current;
+            if (currentSelectedRoom?.id === roomId) {
               setSelectedRoom(null);
               setSelectedRoomId(null);
             }
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        // Log subscription status para debug
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [Inbox] Rooms channel subscribed:', `widget-rooms-${widgetId}`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('❌ [Inbox] Rooms channel error:', status, `widget-rooms-${widgetId}`);
+        }
+      });
+
+    roomsChannelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      if (roomsChannelRef.current) {
+        supabase.removeChannel(roomsChannelRef.current);
+        roomsChannelRef.current = null;
+      }
     };
-  }, [widgetId]); // Removed selectedRoom from deps - causes unnecessary reconnections
+  }, [widgetId, supabase]); // CRITICAL: supabase is stable via useMemo
+
+  // Debug: Monitor rooms and loading state changes
+  useEffect(() => {
+    console.log('📊 [Inbox] Rooms state changed:', rooms.length, rooms);
+  }, [rooms]);
+  
+  useEffect(() => {
+    console.log('🔄 [Inbox] isRoomsLoading changed:', isRoomsLoading);
+  }, [isRoomsLoading]);
 
   // Filter rooms
   useEffect(() => {
@@ -245,8 +388,58 @@ export default function InboxPage() {
       );
     }
     
+    console.log('🔍 [Inbox] Filtered rooms:', filtered.length, 'from', rooms.length);
     setFilteredRooms(filtered);
   }, [rooms, searchQuery, statusFilter]);
+
+  const subscribeToMessages = useCallback((roomId: string) => {
+    if (messageChannelRef.current) {
+      supabase.removeChannel(messageChannelRef.current);
+      messageChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`room-messages-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+          if (currentRoomIdRef.current !== roomId) return;
+          
+          const currentMessages = useInboxStore.getState().messages;
+          if (currentMessages.some(m => m.id === newMessage.id)) return;
+          
+          addMessage(newMessage);
+          
+          if (newMessage.sender_type === 'visitor' && !newMessage.is_read) {
+            supabase
+              .from('messages')
+              .update({ is_read: true, read_at: new Date().toISOString() })
+              .eq('id', newMessage.id)
+              .then(({ error }) => {
+                if (error) console.error('Error marking message as read:', error);
+              });
+          }
+        }
+      )
+      .subscribe();
+
+    messageChannelRef.current = channel;
+
+    return () => {
+      if (messageChannelRef.current) {
+        supabase.removeChannel(messageChannelRef.current);
+        messageChannelRef.current = null;
+      }
+    };
+  }, [supabase, addMessage]);
+
 
   // Monitor selectedRoomId changes (disabled for performance)
   // useEffect(() => {
@@ -257,32 +450,131 @@ export default function InboxPage() {
   //   });
   // }, [selectedRoomId]);
 
+  // Setup Presence tracking for admin and listen for visitor presence
+  useEffect(() => {
+    if (!selectedRoom?.id || !user?.id) {
+      // Clean up presence channel if room is deselected
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.untrack().catch(console.error);
+        supabase.removeChannel(presenceChannelRef.current);
+        presenceChannelRef.current = null;
+      }
+      setIsVisitorOnline(false);
+      return;
+    }
+
+    const roomId = selectedRoom.id;
+    
+    // Clean up previous presence channel
+    if (presenceChannelRef.current) {
+      presenceChannelRef.current.untrack().catch(console.error);
+      supabase.removeChannel(presenceChannelRef.current);
+      presenceChannelRef.current = null;
+    }
+
+    const channelName = `presence:${roomId}`;
+    console.log('📡 [Inbox] Setting up Presence channel for room:', roomId);
+
+    const presenceChannel = supabase.channel(channelName, {
+      config: {
+        presence: {
+          key: `agent:${user.id}`, // Unique key for this agent
+        },
+      },
+    });
+
+    // Listen to presence sync, join, and leave events
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const presenceState = presenceChannel.presenceState();
+        console.log('📡 [Inbox] Presence sync', presenceState);
+        updateVisitorOnlineStatus(presenceState);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('📡 [Inbox] Presence join', key, newPresences);
+        updateVisitorOnlineStatus(presenceChannel.presenceState());
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('📡 [Inbox] Presence leave', key, leftPresences);
+        updateVisitorOnlineStatus(presenceChannel.presenceState());
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [Inbox] Presence channel subscribed');
+          
+          // Track agent as online
+          const agentPresence = {
+            user: 'agent',
+            agent_id: user.id,
+            agent_name: profile?.full_name || user.email?.split('@')[0] || 'Suporte',
+            online_at: new Date().toISOString(),
+          };
+          
+          const trackStatus = await presenceChannel.track(agentPresence);
+          console.log('✅ [Inbox] Agent presence tracked', trackStatus);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('❌ [Inbox] Presence channel error:', status);
+        }
+      });
+
+    presenceChannelRef.current = presenceChannel;
+
+    function updateVisitorOnlineStatus(presenceState: any) {
+      // Check if any visitor is online
+      let visitorFound = false;
+      
+      for (const key in presenceState) {
+        const presences = presenceState[key];
+        if (Array.isArray(presences)) {
+          for (const presence of presences) {
+            if (presence.user === 'visitor') {
+              visitorFound = true;
+              break;
+            }
+          }
+        }
+        if (visitorFound) break;
+      }
+      
+      setIsVisitorOnline(visitorFound);
+      console.log('📡 [Inbox] Visitor online status:', visitorFound);
+    }
+
+    return () => {
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.untrack().catch(console.error);
+        supabase.removeChannel(presenceChannelRef.current);
+        presenceChannelRef.current = null;
+      }
+      setIsVisitorOnline(false);
+    };
+  }, [selectedRoom?.id, user?.id, profile?.full_name, user?.email, supabase]);
+
   // Handle room selection
   useEffect(() => {
-    if (selectedRoom) {
-      currentRoomIdRef.current = selectedRoom.id;
-      setSelectedRoomId(selectedRoom.id);
-      setInputValue('');
-      
-      // Load messages
-      loadMessages(selectedRoom.id);
-      
-      // Mark as read
-      markAsRead(selectedRoom.id);
-      
-      // Subscribe to new messages
-      const cleanup = subscribeToMessages(selectedRoom.id);
-      
-      return () => {
-        cleanup();
-      };
-    } else {
+    if (!selectedRoom) {
       currentRoomIdRef.current = null;
       setSelectedRoomId(null);
-      setMessages([]);
-      setInputValue('');
+      clearMessages();
+      return;
     }
-  }, [selectedRoom?.id, loadMessages]);
+
+    const roomId = selectedRoom.id;
+    if (currentRoomIdRef.current === roomId) return;
+
+    currentRoomIdRef.current = roomId;
+    setSelectedRoomId(roomId);
+    setInputValue('');
+    loadMessages(roomId);
+    const cleanup = subscribeToMessages(roomId);
+    
+    return () => {
+      cleanup();
+      if (currentRoomIdRef.current === roomId) {
+        currentRoomIdRef.current = null;
+      }
+    };
+  }, [selectedRoom?.id, loadMessages, subscribeToMessages, clearMessages]);
 
   // Scroll to bottom when messages change or room changes
   useEffect(() => {
@@ -301,204 +593,67 @@ export default function InboxPage() {
 
 
 
-  const loadWidget = useCallback(async () => {
-    console.log('🔄 [loadWidget] START', { widgetId });
-    try {
-      console.log('📡 [loadWidget] Fetching widget from Supabase...');
-      const { data, error } = await supabase
-        .from('widgets')
-        .select('*')
-        .eq('id', widgetId)
-        .single();
 
-      console.log('📨 [loadWidget] Response received', { hasData: !!data, hasError: !!error });
-
-      if (error) {
-        console.error('❌ [loadWidget] Supabase error:', error);
-        throw error;
-      }
-      
-      if (!data) {
-        console.warn('⚠️ [loadWidget] No widget found, redirecting...');
-        setIsWidgetLoading(false); // CRITICAL: Set before redirect
-        router.push('/dashboard');
-        return;
-      }
-
-      console.log('✅ [loadWidget] Widget loaded successfully');
-      setWidget(data);
-    } catch (error) {
-      console.error('❌ [loadWidget] Error:', error);
-      setIsWidgetLoading(false); // CRITICAL: Set before redirect
-      router.push('/dashboard');
-    } finally {
-      console.log('🏁 [loadWidget] FINALLY - setting isWidgetLoading=false');
-      setIsWidgetLoading(false);
-    }
-  }, [widgetId, supabase, router]);
-
-  const subscribeToMessages = useCallback((roomId: string) => {
-    console.log('📡 Subscribing to messages for room:', roomId);
-    const channel = supabase
-      .channel(`room-messages-${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `room_id=eq.${roomId}`,
-        },
-        async (payload) => {
-          const newMessage = payload.new as Message;
-          
-          // CRITICAL: Only add message if it's for the currently selected room
-          // This prevents race condition when switching rooms quickly
-          if (currentRoomIdRef.current !== roomId) {
-            return;
-          }
-          
-          // Only add if not already in the list (prevent duplicates)
-          setMessages((prev) => {
-            // Double-check room hasn't changed while setState was queued
-            if (currentRoomIdRef.current !== roomId) return prev;
-            
-            const exists = prev.some(m => m.id === newMessage.id);
-            if (exists) return prev;
-            return [...prev, newMessage];
-          });
-          
-          // Se a conversa está aberta, marcar mensagem como lida automaticamente
-          if (newMessage.sender_type === 'visitor' && !newMessage.is_read) {
-            // Marcar como lida no banco (sem await para não bloquear UI)
-            supabase
-              .from('messages')
-              .update({ is_read: true, read_at: new Date().toISOString() })
-              .eq('id', newMessage.id)
-              .then(({ error }) => {
-                if (error) console.error('Error auto-marking message as read:', error);
-              });
-          }
-          
-          // Scroll is handled by useEffect that watches messages.length
-          // NOTA: Notificações são gerenciadas pelo NotificationBell globalmente
-          // para evitar duplicação. Aqui apenas atualizamos a UI.
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
-
-  const markAsRead = useCallback(async (roomId: string) => {
-    try {
-      // CRITICAL: Only mark as read if room is still selected
-      if (roomId !== currentRoomIdRef.current) {
-        return;
-      }
-      
-      // Atualização otimista - UI primeiro
-      setRooms(prev => 
-        prev.map(r => r.id === roomId ? { ...r, unread_count: 0 } : r)
-      );
-      
-      // 1. Marcar todas as mensagens como lidas
-      const { error: messagesError } = await supabase
-        .from('messages')
-        .update({ is_read: true, read_at: new Date().toISOString() })
-        .eq('room_id', roomId)
-        .eq('is_read', false);
-      
-      if (messagesError) {
-        console.error('Error marking messages as read:', messagesError);
-      }
-      
-      // 2. Zerar contador de não lidas da room
-      const { error: roomError } = await supabase
-        .from('rooms')
-        .update({ unread_count: 0 })
-        .eq('id', roomId);
-        
-      if (roomError) {
-        console.error('Error updating room unread count:', roomError);
-      }
-    } catch (error) {
-      console.error('Error marking as read:', error);
-    }
-  }, [supabase]);
 
   // Handler para clique na conversa - garante visualização
   const handleRoomClick = useCallback((room: Room) => {
-    // Atualização otimista IMEDIATA do badge
-    if (room.unread_count > 0) {
-      setRooms(prev => 
-        prev.map(r => r.id === room.id ? { ...r, unread_count: 0 } : r)
-      );
-    }
-    
-    // Selecionar a room (isso vai triggar markAsRead via useEffect)
+    // Selecionar a room
     setSelectedRoom(room);
   }, []);
 
-  // Handler para clique na área de mensagens - garante que está marcado como lido
+  // Handler para clique na área de mensagens
   const handleMessagesAreaClick = useCallback(() => {
-    if (selectedRoom && selectedRoom.unread_count > 0) {
-      // Atualização otimista
-      setRooms(prev => 
-        prev.map(r => r.id === selectedRoom.id ? { ...r, unread_count: 0 } : r)
-      );
-      
-      // Marcar como lido (função já tem proteção de duplicação)
-      markAsRead(selectedRoom.id);
-    }
-  }, [selectedRoom, markAsRead]);
+    // Não faz nada - markAsRead foi removido
+  }, []);
 
   const sendMessage = useCallback(async () => {
-    if (!inputValue.trim() || !selectedRoom) return;
+    if (!inputValue.trim() || !selectedRoom || !widgetId) return;
     
     // CRITICAL: Capture room ID at the moment of sending
     const roomIdAtSend = selectedRoom.id;
+    const messageContent = inputValue.trim();
 
     try {
       // Validate room hasn't changed before sending
       if (roomIdAtSend !== currentRoomIdRef.current) {
         return;
       }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      const messageContent = inputValue.trim();
       
       // Clear input immediately for better UX
       setInputValue('');
+      
+      console.log('📤 [Inbox] Sending message via API for roomId:', roomIdAtSend);
 
-      await supabase.from('messages').insert({
-        room_id: roomIdAtSend,
-        sender_type: 'agent',
-        sender_id: user?.id || 'agent',
-        sender_name: profile?.full_name || user?.email?.split('@')[0] || 'Suporte',
-        sender_avatar: profile?.avatar_url || null,
-        content: messageContent,
-        message_type: 'text',
+      // Send message via API route (server-side, more reliable)
+      const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomIdAtSend}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: messageContent,
+          sender_name: profile?.full_name || 'Suporte',
+          sender_avatar: profile?.avatar_url || null,
+          message_type: 'text',
+        }),
       });
 
-      // Only update room if still on same room
-      if (roomIdAtSend === currentRoomIdRef.current) {
-        await supabase
-          .from('rooms')
-          .update({
-            last_message_at: new Date().toISOString(),
-            last_message_preview: messageContent.substring(0, 100),
-          })
-          .eq('id', roomIdAtSend);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to send message: ${res.statusText}`);
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
+
+      const data = await res.json();
+      console.log('✅ [Inbox] Message sent via API:', data.message?.id);
+      
+      // Message will be added via Realtime subscription
+    } catch (error: any) {
+      console.error('❌ [Inbox] Error sending message:', error);
       // Restore input value on error
-      setInputValue(inputValue);
+      setInputValue(messageContent);
+      showError(error.message || 'Erro ao enviar mensagem. Tente novamente.');
     }
-  }, [inputValue, selectedRoom, supabase, profile]);
+  }, [inputValue, selectedRoom, widgetId, profile, showError]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -508,7 +663,8 @@ export default function InboxPage() {
   }, [sendMessage]);
 
   const closeConversation = useCallback(async (roomId: string) => {
-    if (!confirm('Deseja realmente fechar esta conversa?')) return;
+    const confirmed = await confirm('Deseja realmente fechar esta conversa?', 'Fechar Conversa');
+    if (!confirmed) return;
 
     try {
       // CRITICAL: Verify room is still selected before proceeding
@@ -542,16 +698,25 @@ export default function InboxPage() {
       // Verify again before continuing
       if (roomId !== currentRoomIdRef.current) return;
 
-      // 3. Adicionar mensagem de sistema
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('messages').insert({
-        room_id: roomId,
-        sender_type: 'agent',
-        sender_id: user?.id || 'system',
-        sender_name: 'Sistema',
-        content: 'Conversa encerrada pelo suporte.',
-        message_type: 'system',
-      });
+      // 3. Adicionar mensagem de sistema via API route
+      if (widgetId) {
+        const systemMessageRes = await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            content: 'Conversa encerrada pelo suporte.',
+            sender_name: 'Sistema',
+            message_type: 'system',
+          }),
+        });
+
+        if (!systemMessageRes.ok) {
+          console.error('Error sending system message:', await systemMessageRes.text());
+          // Continue even if system message fails
+        }
+      }
 
       // Verify again before continuing
       if (roomId !== currentRoomIdRef.current) return;
@@ -576,9 +741,9 @@ export default function InboxPage() {
       }
     } catch (error) {
       console.error('Error closing conversation:', error);
-      alert('Erro ao fechar conversa. Tente novamente.');
+      showError('Erro ao fechar conversa. Tente novamente.');
     }
-  }, [supabase]);
+  }, [supabase, confirm, showError, widgetId]);
 
   const reopenConversation = useCallback(async (roomId: string) => {
     try {
@@ -619,14 +784,6 @@ export default function InboxPage() {
       .slice(0, 2);
   };
 
-  // Check if visitor is online (activity within last 3 minutes)
-  const isVisitorOnline = (lastActivity: string | null): boolean => {
-    if (!lastActivity) return false;
-    const now = new Date();
-    const lastActivityTime = new Date(lastActivity);
-    const diffMinutes = (now.getTime() - lastActivityTime.getTime()) / (1000 * 60);
-    return diffMinutes < 3;
-  };
 
   const formatTime = (date: string) => {
     const d = new Date(date);
@@ -682,11 +839,63 @@ export default function InboxPage() {
     </div>
   );
 
+  // Debug: Log render conditions
+  useEffect(() => {
+    console.log('🎨 [Inbox] Render check:', { 
+      isWidgetLoading, 
+      isRoomsLoading, 
+      roomsLength: rooms.length,
+      widgetError: !!widgetError 
+    });
+  }, [isWidgetLoading, isRoomsLoading, rooms.length, widgetError]);
+
   if (isWidgetLoading) {
+    console.log('⏸️ [Inbox] Returning early - widget still loading');
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <DashboardLayout
+        email={user?.email || ''}
+        title="Carregando..."
+        description="Carregando widget"
+      >
+        <div className="min-h-[calc(100vh-140px)] flex items-center justify-center bg-background">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Carregando widget...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (widgetError) {
+    return (
+      <DashboardLayout
+        email={user?.email || ''}
+        title="Erro"
+        description="Erro ao carregar widget"
+      >
+        <div className="min-h-[calc(100vh-140px)] flex items-center justify-center bg-background">
+          <Card className="max-w-md w-full">
+            <div className="p-6 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
+                <X className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Erro ao carregar widget</h3>
+                <p className="text-sm text-muted-foreground mb-4">{widgetError}</p>
+              </div>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={() => router.push('/dashboard')} variant="default">
+                  Voltar ao Dashboard
+                </Button>
+                <Button onClick={() => window.location.reload()} variant="outline">
+                  Tentar Novamente
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -696,10 +905,11 @@ export default function InboxPage() {
 
   return (
     <DashboardLayout
-      email={userEmail}
+      email={user?.email || ''}
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
+      <div className={`${selectedRoom ? '-m-3 sm:-m-6 lg:m-0 lg:p-0 h-full' : ''}`}>
       <style jsx>{`
         @keyframes fadeIn {
           from {
@@ -712,9 +922,12 @@ export default function InboxPage() {
           }
         }
       `}</style>
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] sm:h-[calc(100vh-180px)] gap-3 sm:gap-6">
-        {/* Sidebar - Lista de Conversas */}
-        <div className={`${selectedRoom ? 'hidden lg:flex' : 'flex'} w-full lg:w-[380px] flex-col gap-3 sm:gap-4`}>
+      {/* Mobile: Fullscreen chat when room selected, otherwise show conversations */}
+      {/* Desktop: Split view */}
+      <div className={`flex flex-col lg:flex-row h-[calc(100vh-140px)] sm:h-[calc(100vh-180px)] lg:h-[calc(100vh-140px)] gap-3 sm:gap-6 overflow-hidden ${selectedRoom ? 'lg:overflow-hidden' : ''} relative`}>
+        {/* Sidebar - Lista de Conversas - Desktop always visible, Mobile in Sheet */}
+        {/* Desktop Sidebar */}
+        <div className="hidden lg:flex w-[380px] flex-col gap-3 sm:gap-4">
           {/* Stats Cards */}
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <Card className="p-2 sm:p-3 transition-all duration-200">
@@ -818,11 +1031,6 @@ export default function InboxPage() {
                                   <span className="font-semibold text-sm sm:text-base truncate">
                                     {room.visitor_name || 'Visitante'}
                                   </span>
-                                  <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                                    isVisitorOnline(room.last_activity) 
-                                      ? 'bg-green-500 animate-pulse' 
-                                      : 'bg-gray-400'
-                                  }`} title={isVisitorOnline(room.last_activity) ? 'Online' : 'Offline'} />
                                 </div>
                                 {room.unread_count > 0 && (
                                   <Badge 
@@ -879,18 +1087,354 @@ export default function InboxPage() {
           </Card>
         </div>
 
-        {/* Main Chat Area */}
-        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col`}>
-          {selectedRoom ? (
+        {/* Mobile Conversations Menu Sheet */}
+        <Sheet open={isConversationsMenuOpen} onOpenChange={setIsConversationsMenuOpen}>
+          <SheetContent side="left" className="p-0 w-full sm:w-[400px] overflow-hidden flex flex-col">
+            {/* Mobile Conversations List */}
+            <div className="flex flex-col h-full">
+              {/* Header */}
+              <div className="p-4 border-b flex-shrink-0">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold">Conversas</h2>
+                </div>
+                
+                {/* Stats Cards */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <Card className="p-2">
+                    <div className="text-xl font-bold text-primary">{openCount}</div>
+                    <div className="text-xs text-muted-foreground">Abertas</div>
+                  </Card>
+                  <Card className="p-2">
+                    <div className="text-xl font-bold">{closedCount}</div>
+                    <div className="text-xs text-muted-foreground">Fechadas</div>
+                  </Card>
+                  <Card className="p-2">
+                    <div className="text-xl font-bold text-destructive">{totalUnread}</div>
+                    <div className="text-xs text-muted-foreground">Não lidas</div>
+                  </Card>
+                </div>
+
+                {/* Search */}
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar conversas..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-sm"
+                  />
+                </div>
+                
+                {/* Filters */}
+                <div className="flex gap-2">
+                  <Button
+                    variant={statusFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('all')}
+                    className="flex-1 text-xs"
+                  >
+                    Todas
+                  </Button>
+                  <Button
+                    variant={statusFilter === 'open' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('open')}
+                    className="flex-1 text-xs"
+                  >
+                    Abertas
+                  </Button>
+                  <Button
+                    variant={statusFilter === 'closed' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('closed')}
+                    className="flex-1 text-xs"
+                  >
+                    Fechadas
+                  </Button>
+                </div>
+              </div>
+
+              {/* Conversations List */}
+              <div className="flex-1 overflow-y-auto">
+                {isRoomsLoading ? (
+                  <div className="divide-y">
+                    {[...Array(5)].map((_, i) => (
+                      <RoomSkeleton key={i} />
+                    ))}
+                  </div>
+                ) : filteredRooms.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                      <Search className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {searchQuery ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa ainda'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {filteredRooms.map((room) => (
+                      <button
+                        key={room.id}
+                        onClick={() => {
+                          handleRoomClick(room);
+                          setIsConversationsMenuOpen(false);
+                        }}
+                        className={`w-full p-4 text-left hover:bg-accent transition-colors ${
+                          selectedRoom?.id === room.id ? 'bg-accent' : ''
+                        }`}
+                      >
+                        <div className="flex gap-3">
+                          <Avatar className="h-10 w-10 flex-shrink-0">
+                            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                              {getInitials(room.visitor_name || 'Visitante')}
+                            </AvatarFallback>
+                          </Avatar>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="font-semibold text-sm truncate">
+                                  {room.visitor_name || 'Visitante'}
+                                </span>
+                                {room.unread_count > 0 && (
+                                  <Badge variant="destructive" className="rounded-full h-5 min-w-[20px] flex items-center justify-center px-1.5 text-xs">
+                                    {room.unread_count}
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground flex-shrink-0">
+                                {formatTime(room.last_message_at || room.created_at)}
+                              </span>
+                            </div>
+                            
+                            {room.visitor_email && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span className="text-xs text-muted-foreground truncate">
+                                  {room.visitor_email}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {room.last_message_preview && (
+                              <p className="text-xs text-muted-foreground truncate mb-2">
+                                {room.last_message_preview}
+                              </p>
+                            )}
+                            
+                            <div className="flex items-center gap-2">
+                              <Badge variant={room.status === 'open' ? 'default' : 'secondary'} className="text-xs">
+                                {room.status === 'open' ? (
+                                  <>
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Aberta
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="h-3 w-3 mr-1" />
+                                    Fechada
+                                  </>
+                                )}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Main Chat Area - Mobile: Fullscreen when room selected, Desktop: Split */}
+        {/* Mobile: Show conversations list when no room selected */}
+        {!selectedRoom && (
+          <div className="lg:hidden flex-1 flex flex-col">
             <Card className="flex-1 flex flex-col overflow-hidden">
-              {/* Chat Header */}
-              <div className="flex items-center justify-between p-3 sm:p-4 border-b">
-                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                  {/* Mobile Back Button */}
+              {/* Mobile Conversations Header */}
+              <div className="p-4 border-b flex-shrink-0">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">Conversas</h2>
+                    <p className="text-xs text-muted-foreground">Toque em uma conversa para abrir</p>
+                  </div>
+                </div>
+                
+                {/* Stats Cards */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <Card className="p-2">
+                    <div className="text-xl font-bold text-primary">{openCount}</div>
+                    <div className="text-xs text-muted-foreground">Abertas</div>
+                  </Card>
+                  <Card className="p-2">
+                    <div className="text-xl font-bold">{closedCount}</div>
+                    <div className="text-xs text-muted-foreground">Fechadas</div>
+                  </Card>
+                  <Card className="p-2">
+                    <div className="text-xl font-bold text-destructive">{totalUnread}</div>
+                    <div className="text-xs text-muted-foreground">Não lidas</div>
+                  </Card>
+                </div>
+
+                {/* Search */}
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar conversas..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-sm"
+                  />
+                </div>
+                
+                {/* Filters */}
+                <div className="flex gap-2">
+                  <Button
+                    variant={statusFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('all')}
+                    className="flex-1 text-xs"
+                  >
+                    Todas
+                  </Button>
+                  <Button
+                    variant={statusFilter === 'open' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('open')}
+                    className="flex-1 text-xs"
+                  >
+                    Abertas
+                  </Button>
+                  <Button
+                    variant={statusFilter === 'closed' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('closed')}
+                    className="flex-1 text-xs"
+                  >
+                    Fechadas
+                  </Button>
+                </div>
+              </div>
+
+              {/* Conversations List */}
+              <div className="flex-1 overflow-y-auto">
+                {isRoomsLoading ? (
+                  <div className="divide-y">
+                    {[...Array(5)].map((_, i) => (
+                      <RoomSkeleton key={i} />
+                    ))}
+                  </div>
+                ) : filteredRooms.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                      <Search className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {searchQuery ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa ainda'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {filteredRooms.map((room) => (
+                      <button
+                        key={room.id}
+                        onClick={() => handleRoomClick(room)}
+                        className="w-full p-4 text-left hover:bg-accent transition-colors"
+                      >
+                        <div className="flex gap-3">
+                          <Avatar className="h-10 w-10 flex-shrink-0">
+                            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                              {getInitials(room.visitor_name || 'Visitante')}
+                            </AvatarFallback>
+                          </Avatar>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="font-semibold text-sm truncate">
+                                  {room.visitor_name || 'Visitante'}
+                                </span>
+                                {room.unread_count > 0 && (
+                                  <Badge variant="destructive" className="rounded-full h-5 min-w-[20px] flex items-center justify-center px-1.5 text-xs">
+                                    {room.unread_count}
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground flex-shrink-0">
+                                {formatTime(room.last_message_at || room.created_at)}
+                              </span>
+                            </div>
+                            
+                            {room.visitor_email && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span className="text-xs text-muted-foreground truncate">
+                                  {room.visitor_email}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {room.last_message_preview && (
+                              <p className="text-xs text-muted-foreground truncate mb-2">
+                                {room.last_message_preview}
+                              </p>
+                            )}
+                            
+                            <div className="flex items-center gap-2">
+                              <Badge variant={room.status === 'open' ? 'default' : 'secondary'} className="text-xs">
+                                {room.status === 'open' ? (
+                                  <>
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Aberta
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="h-3 w-3 mr-1" />
+                                    Fechada
+                                  </>
+                                )}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Chat Area - Mobile: Fullscreen, Desktop: Split */}
+        {/* Mobile: Fixed fullscreen overlay, Desktop: Relative in layout */}
+        <div className={`${selectedRoom ? 'flex' : 'hidden lg:flex'} flex-1 flex-col min-h-0 lg:min-h-0 fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto bg-background lg:bg-transparent`} style={{ height: selectedRoom ? '100vh' : undefined }}>
+          {selectedRoom ? (
+            <Card className="flex-1 flex flex-col overflow-hidden min-h-0 h-full lg:h-auto border-0 lg:border rounded-none lg:rounded-lg shadow-none lg:shadow">
+              {/* Chat Header - Fixed */}
+              <div className="flex items-center justify-between p-4 border-b bg-background flex-shrink-0 z-10">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {/* Mobile Menu Button */}
+                  <Sheet open={isConversationsMenuOpen} onOpenChange={setIsConversationsMenuOpen}>
+                    <SheetTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="lg:hidden flex-shrink-0 h-9 w-9"
+                      >
+                        <Menu className="h-5 w-5" />
+                      </Button>
+                    </SheetTrigger>
+                  </Sheet>
+                  
+                  {/* Desktop: Show back button only when needed */}
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="lg:hidden flex-shrink-0 h-8 w-8"
+                    className="hidden lg:flex flex-shrink-0 h-9 w-9"
                     onClick={() => setSelectedRoom(null)}
                   >
                     <ArrowLeft className="h-4 w-4" />
@@ -906,15 +1450,18 @@ export default function InboxPage() {
                       <h3 className="font-semibold text-sm sm:text-base truncate">
                         {selectedRoom.visitor_name || 'Visitante'}
                       </h3>
-                      <Badge 
-                        variant={isVisitorOnline(selectedRoom.last_activity) ? 'default' : 'secondary'} 
-                        className="h-4 sm:h-5 text-xs flex items-center gap-1"
-                      >
-                        <div className={`h-1.5 w-1.5 rounded-full ${
-                          isVisitorOnline(selectedRoom.last_activity) ? 'bg-green-500' : 'bg-gray-400'
-                        }`} />
-                        {isVisitorOnline(selectedRoom.last_activity) ? 'Online' : 'Offline'}
-                      </Badge>
+                      {isVisitorOnline && (
+                        <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                          <span>Online</span>
+                        </span>
+                      )}
+                      {!isVisitorOnline && selectedRoom && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                          <span>Offline</span>
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
                       {selectedRoom.visitor_email && (
@@ -940,36 +1487,52 @@ export default function InboxPage() {
                     </Button>
                   )}
                   
+                  {/* Mobile: Close chat button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSelectedRoom(null)}
+                    className="lg:hidden h-9 w-9"
+                    title="Voltar para conversas"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                  
+                  {/* Desktop: Close/Reopen conversation button */}
                   {selectedRoom.status === 'open' ? (
                     <Button
                       variant="destructive"
                       size="sm"
                       onClick={() => closeConversation(selectedRoom.id)}
-                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      className="hidden lg:flex text-sm h-9"
                     >
-                      <X className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">Fechar</span>
+                      <X className="h-4 w-4 mr-2" />
+                      Fechar
                     </Button>
                   ) : (
                     <Button
                       variant="default"
                       size="sm"
                       onClick={() => reopenConversation(selectedRoom.id)}
-                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      className="hidden lg:flex text-sm h-9"
                     >
-                      <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">Reabrir</span>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Reabrir
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* Messages */}
+              {/* Messages - Scrollable area */}
               <div
                 ref={messagesContainerRef}
                 id="messages-container"
-                className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 bg-muted/20"
+                className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 bg-muted/20 min-h-0"
                 onClick={handleMessagesAreaClick}
+                style={{
+                  WebkitOverflowScrolling: 'touch',
+                  overscrollBehavior: 'contain'
+                }}
               >
                 {isMessagesLoading ? (
                   <>
@@ -1060,8 +1623,8 @@ export default function InboxPage() {
                 )}
               </div>
 
-              {/* Input */}
-              <div className="p-3 sm:p-4 pb-safe border-t bg-background" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+              {/* Input - Fixed at bottom */}
+              <div className="p-3 sm:p-4 pb-safe border-t bg-background flex-shrink-0 z-10" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
                 {selectedRoom.status === 'closed' ? (
                   <div className="text-center py-3 sm:py-4 text-muted-foreground">
                     <p className="text-xs sm:text-sm">Esta conversa está fechada. Reabra para continuar.</p>
@@ -1104,6 +1667,9 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+      </div>
+      {AlertDialogComponent}
+      {ToastContainer}
     </DashboardLayout>
   );
 }

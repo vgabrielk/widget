@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { useToast } from '@/components/ui/toast';
 
 export default function SetupSaaSPage() {
   const [isChecking, setIsChecking] = useState(false);
@@ -19,6 +20,7 @@ export default function SetupSaaSPage() {
     rooms: null,
     messages: null,
   });
+  const { info: showInfo, ToastContainer } = useToast();
 
   const checkDatabase = async () => {
     setIsChecking(true);
@@ -52,7 +54,7 @@ export default function SetupSaaSPage() {
     link.href = '/supabase/migrations/002_saas_platform.sql';
     link.download = '002_saas_platform.sql';
     link.click();
-    alert('Abrindo arquivo SQL. Cole o conteúdo no Supabase SQL Editor.');
+    showInfo('Abrindo arquivo SQL. Cole o conteúdo no Supabase SQL Editor.');
   };
 
   return (
@@ -236,6 +238,7 @@ export default function SetupSaaSPage() {
           </div>
         </div>
       </div>
+      {ToastContainer}
     </div>
   );
 }

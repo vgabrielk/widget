@@ -195,3 +195,4 @@ CREATE POLICY "Anyone can view active widgets by public_key"
   );
 }
 
+

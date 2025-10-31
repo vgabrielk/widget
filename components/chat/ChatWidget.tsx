@@ -34,15 +34,22 @@ export function ChatWidget({
     if (isOpen && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isOpen]);
+  }, [messages.length, isOpen]); // Only depend on length, not full array
 
-  // Mark messages as read when opening chat
+  // Mark messages as read when opening chat or when new admin messages arrive
   useEffect(() => {
     if (isOpen) {
-      markAsRead();
+      // Update welcome state
       setShowWelcome(messages.length === 0);
+      
+      // Mark as read if there are unread admin messages
+      if (unreadCount > 0) {
+        markAsRead();
+      }
     }
-  }, [isOpen, markAsRead, messages.length]);
+    // Only depend on isOpen and unreadCount to avoid unnecessary re-runs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, unreadCount]);
 
   const handleSend = async () => {
     if (!inputValue.trim()) return;

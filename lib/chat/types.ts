@@ -30,3 +30,4 @@ export interface ChatWidgetConfig {
   welcomeMessage?: string;
 }
 
+

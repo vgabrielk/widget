@@ -58,3 +58,4 @@ COMMENT ON POLICY "Allow reading rooms" ON public.rooms IS
 COMMENT ON POLICY "Allow reading messages from valid rooms" ON public.messages IS 
 'Security: Users can only read messages from rooms belonging to their widgets. Visitors can read their own messages.';
 
+

@@ -17,3 +17,4 @@ ALTER TABLE public.widgets ENABLE ROW LEVEL SECURITY;
 COMMENT ON POLICY "Anyone can view active widgets by public_key" ON public.widgets IS 
   'Allows anonymous access to active widgets for embedding. This is safe because only public_key and config data is exposed.';
 
+

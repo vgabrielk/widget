@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Helper function to create CORS headers
+function getCorsHeaders(origin: string | null) {
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
+  };
+}
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin') || '*';
+  return new NextResponse(null, {
+    status: 200,
+    headers: getCorsHeaders(origin),
+  });
+}
+
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
   try {
     let roomId: string | null = null;
 
@@ -28,7 +49,7 @@ export async function POST(request: NextRequest) {
       console.error('[Offline API] No roomId provided');
       return NextResponse.json(
         { error: 'roomId is required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -50,17 +71,17 @@ export async function POST(request: NextRequest) {
       console.error('[Offline API] Update error:', error);
       return NextResponse.json(
         { error: 'Failed to update status' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
     console.log('[Offline API] Successfully marked offline');
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { headers: corsHeaders });
   } catch (error) {
     console.error('[Offline API] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

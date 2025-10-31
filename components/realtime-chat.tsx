@@ -62,12 +62,15 @@ export const RealtimeChat = ({
     if (onMessage) {
       onMessage(allMessages)
     }
-  }, [allMessages, onMessage])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMessages])
 
   useEffect(() => {
     // Scroll to bottom whenever messages change
     scrollToBottom()
-  }, [allMessages, scrollToBottom])
+    // scrollToBottom is stable (useCallback with no deps)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMessages])
 
   const handleSendMessage = useCallback(
     (e: React.FormEvent) => {

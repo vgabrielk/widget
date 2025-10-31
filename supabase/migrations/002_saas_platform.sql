@@ -307,3 +307,4 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.widgets;
 
 -- This will be created automatically by the trigger when users sign up
 
+

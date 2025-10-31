@@ -20,3 +20,4 @@ BEGIN
     RAISE NOTICE '🔓 Widget owners can now update their rooms (close/reopen conversations)';
 END $$;
 
+

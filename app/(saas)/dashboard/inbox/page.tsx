@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Inbox, MessageSquare, Clock, CheckCircle2, Loader2 } from 'lucide-react';
 import { Room } from '@/lib/types/saas';
-import { useInfiniteQuery } from '@/lib/hooks/use-infinite-query-simple';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type RoomWithWidget = Room & {
   widgets: {
@@ -26,92 +26,127 @@ export default function InboxPage() {
   const [user, setUser] = useState<any>(null);
   const [widgetIds, setWidgetIds] = useState<string[]>([]);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [rooms, setRooms] = useState<RoomWithWidget[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
 
-  // Load user and widget IDs
+  // Load user and widget IDs with timeout safety
   useEffect(() => {
+    console.log('🚀 [GLOBAL INBOX] Loading user and widgets...');
+    
     const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
+      console.log('🔄 [loadUser] START');
+      try {
+        console.log('📡 [loadUser] Fetching user from Supabase...');
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        console.log('📨 [loadUser] User response', { hasUser: !!user });
+        
+        if (!user) {
+          console.warn('⚠️ [loadUser] No user found, redirecting to login...');
+          setIsLoadingUser(false); // CRITICAL: Set before redirect
+          router.push('/auth/login');
+          return;
+        }
+
+        setUser(user);
+        console.log('✅ [loadUser] User loaded:', user.email);
+
+        // Get user's widgets
+        console.log('📡 [loadUser] Fetching widgets...');
+        const { data: widgets, error } = await supabase
+          .from('widgets')
+          .select('id')
+          .eq('user_id', user.id);
+
+        console.log('📨 [loadUser] Widgets response', { count: widgets?.length || 0, hasError: !!error });
+
+        if (error) {
+          console.error('❌ [loadUser] Error loading widgets:', error);
+        }
+
+        setWidgetIds(widgets?.map(w => w.id) || []);
+        console.log('✅ [loadUser] Complete - widgetIds:', widgets?.map(w => w.id) || []);
+      } catch (error) {
+        console.error('❌ [loadUser] Error:', error);
+        setIsLoadingUser(false); // CRITICAL: Set before redirect
         router.push('/auth/login');
-        return;
+      } finally {
+        console.log('🏁 [loadUser] FINALLY - setting isLoadingUser=false');
+        setIsLoadingUser(false);
       }
-
-      setUser(user);
-
-      // Get user's widgets
-      const { data: widgets } = await supabase
-        .from('widgets')
-        .select('id')
-        .eq('user_id', user.id);
-
-      setWidgetIds(widgets?.map(w => w.id) || []);
-      setIsLoadingUser(false);
     };
 
-    loadUser();
+    // Safety timeout - if loading takes more than 10s, force stop
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ [TIMEOUT] User/widgets loading took too long! Force stopping...');
+      setIsLoadingUser(false);
+      router.push('/dashboard');
+    }, 10000);
+
+    loadUser().finally(() => {
+      clearTimeout(timeoutId);
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Use infinite query for rooms - queryKey changes when widgetIds change
-  const queryKey = widgetIds.length > 0 ? widgetIds.join(',') : 'no-widgets';
-  
-  const { 
-    data: rooms, 
-    isLoading, 
-    isFetching, 
-    hasMore, 
-    fetchNextPage,
-    count 
-  } = useInfiniteQuery<RoomWithWidget, 'rooms'>({
-    tableName: 'rooms',
-    columns: '*, widgets!inner(name, brand_color)',
-    pageSize: 20,
-    queryKey: queryKey,
-    trailingQuery: (query) => {
-      let q = query;
-      if (widgetIds.length > 0) {
-        // SEGURANÇA: Só busca rooms dos widgets do usuário
-        q = q.in('widget_id', widgetIds);
-      } else {
-        // CRÍTICO: Se não tem widgetIds ainda, retornar vazio (filtro impossível)
-        // Isso previne carregar TODAS as rooms de TODOS os usuários
-        q = q.eq('widget_id', '00000000-0000-0000-0000-000000000000');
-      }
-      return q
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false });
-    }
-  });
-
-  // Infinite scroll observer
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const lastRoomRef = useCallback((node: HTMLDivElement | null) => {
-    if (isLoading || isFetching) return;
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-    
-    if (node && hasMore) {
-      observerRef.current = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting && hasMore) {
-          fetchNextPage();
-        }
-      });
-      observerRef.current.observe(node);
-    }
-  }, [isLoading, isFetching, hasMore, fetchNextPage]);
-
-  // Cleanup observer on unmount
+  // Load rooms when widgetIds are available
   useEffect(() => {
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
+    if (widgetIds.length === 0) {
+      console.log('⏸️ [loadRooms] No widgets yet, skipping...');
+      return;
+    }
+
+    console.log('🚀 [GLOBAL INBOX] Loading rooms...', { widgetCount: widgetIds.length });
+    
+    const loadRooms = async () => {
+      console.log('📥 [loadRooms] START', { widgetIds });
+      try {
+        setIsLoadingRooms(true);
+        console.log('📡 [loadRooms] Fetching rooms from Supabase...');
+        
+        const { data, error } = await supabase
+          .from('rooms')
+          .select('*, widgets!inner(name, brand_color)')
+          .in('widget_id', widgetIds)
+          .order('last_message_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        console.log('📨 [loadRooms] Response received', { count: data?.length || 0, hasError: !!error });
+
+        if (error) {
+          console.error('❌ [loadRooms] Supabase error:', error);
+          throw error;
+        }
+        
+        setRooms(data || []);
+        console.log('✅ [loadRooms] Rooms loaded successfully');
+      } catch (error) {
+        console.error('❌ [loadRooms] Error:', error);
+      } finally {
+        console.log('🏁 [loadRooms] FINALLY - setting isLoadingRooms=false');
+        setIsLoadingRooms(false);
       }
     };
-  }, []);
+
+    // Safety timeout
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ [TIMEOUT] Rooms loading took too long! Force stopping...');
+      setIsLoadingRooms(false);
+    }, 10000);
+
+    loadRooms().finally(() => {
+      clearTimeout(timeoutId);
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [widgetIds, supabase]);
 
   const openRooms = rooms?.filter(r => r.status === 'open') || [];
   const closedRooms = rooms?.filter(r => r.status === 'closed') || [];
@@ -220,7 +255,7 @@ export default function InboxPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
-            {isLoading ? (
+            {isLoadingRooms ? (
               <div className="space-y-2 sm:space-y-3">
                 {[...Array(5)].map((_, i) => (
                   <RoomCardSkeleton key={i} />
@@ -249,7 +284,6 @@ export default function InboxPage() {
                     className="block"
                   >
                     <div 
-                      ref={index === rooms.length - 1 ? lastRoomRef : null}
                       className="flex items-start gap-2 sm:gap-4 p-3 sm:p-4 rounded-lg border hover:border-primary/50 hover:bg-primary/5 transition-all"
                     >
                       <div
@@ -309,11 +343,6 @@ export default function InboxPage() {
                     </div>
                   </Link>
                 ))}
-                {isFetching && (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin text-primary" />
-                  </div>
-                )}
               </div>
             )}
           </CardContent>

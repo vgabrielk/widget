@@ -1,16 +1,18 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Message, Room } from './types';
+import { useChatWidgetStore } from '@/stores/useChatWidgetStore';
 
 export function useChatWidget() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, setMessages, addMessage } = useChatWidgetStore();
   const [room, setRoom] = useState<Room | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [visitorId, setVisitorId] = useState<string>('');
   const [unreadCount, setUnreadCount] = useState(0);
-  const supabase = createClient();
+  // CRITICAL: Create supabase client only once to prevent infinite loops
+  const supabase = useMemo(() => createClient(), []);
 
   // Initialize visitor ID from localStorage or create new one
   useEffect(() => {
@@ -82,7 +84,7 @@ export function useChatWidget() {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, setMessages]);
 
   // Initialize room and messages
   useEffect(() => {
@@ -114,7 +116,13 @@ export function useChatWidget() {
         },
         (payload) => {
           const newMessage = payload.new as Message;
-          setMessages((prev) => [...prev, newMessage]);
+          
+          // CRITICAL: Check if message already exists to prevent duplicates
+          const currentMessages = useChatWidgetStore.getState().messages;
+          const exists = currentMessages.some(m => m.id === newMessage.id);
+          if (exists) return;
+          
+          addMessage(newMessage);
           
           // Increment unread count if admin message
           if (newMessage.sender_type === 'admin') {
@@ -127,10 +135,13 @@ export function useChatWidget() {
     return () => {
       supabase.removeChannel(channel);
     };
+    // CRITICAL: Only depend on room?.id and supabase (stable via useMemo)
+    // addMessage from Zustand is stable but we check duplicates manually
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.id, supabase]);
 
   // Send message
-  const sendMessage = async (content: string) => {
+  const sendMessage = useCallback(async (content: string) => {
     if (!room?.id || !content.trim()) return;
 
     try {
@@ -147,7 +158,7 @@ export function useChatWidget() {
       console.error('Error sending message:', error);
       throw error;
     }
-  };
+  }, [room?.id, visitorId, supabase]);
 
   // Mark messages as read
   const markAsRead = useCallback(async () => {

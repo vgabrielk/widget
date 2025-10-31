@@ -208,3 +208,4 @@ Comportamento pode variar:
 6. 🔮 Notificações por email para mensagens não lidas
 7. 🔮 Badge count na favicon
 
+

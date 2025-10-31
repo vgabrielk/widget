@@ -555,6 +555,43 @@
         return sanitized.trim();
     }
 
+    function isMobileScreen() {
+        return window.innerWidth <= 1024;
+    }
+
+    function applyMobileStyles() {
+        const chatWindow = document.getElementById('chat-widget-window');
+        if (!chatWindow) return;
+        
+        if (isMobileScreen()) {
+            // Apply fullscreen styles for mobile/tablet with !important
+            chatWindow.style.setProperty('left', '0', 'important');
+            chatWindow.style.setProperty('right', '0', 'important');
+            chatWindow.style.setProperty('top', '0', 'important');
+            chatWindow.style.setProperty('bottom', '0', 'important');
+            chatWindow.style.setProperty('width', '100vw', 'important');
+            chatWindow.style.setProperty('height', '100vh', 'important');
+            chatWindow.style.setProperty('max-width', '100vw', 'important');
+            chatWindow.style.setProperty('max-height', '100vh', 'important');
+            chatWindow.style.setProperty('border-radius', '0', 'important');
+            chatWindow.style.setProperty('box-shadow', 'none', 'important');
+            chatWindow.style.setProperty('margin', '0', 'important');
+        } else {
+            // Reset to default desktop styles
+            chatWindow.style.removeProperty('left');
+            chatWindow.style.removeProperty('right');
+            chatWindow.style.removeProperty('top');
+            chatWindow.style.removeProperty('bottom');
+            chatWindow.style.removeProperty('width');
+            chatWindow.style.removeProperty('height');
+            chatWindow.style.removeProperty('max-width');
+            chatWindow.style.removeProperty('max-height');
+            chatWindow.style.removeProperty('border-radius');
+            chatWindow.style.removeProperty('box-shadow');
+            chatWindow.style.removeProperty('margin');
+        }
+    }
+
     function initWidget(widgetConfig, supabaseConfig) {
         console.log('ChatWidget: Initializing...', { widgetConfig, supabaseConfig });
 
@@ -625,6 +662,13 @@
         // Cleanup de subscriptions quando página for fechada (previne memory leak)
         window.addEventListener('beforeunload', cleanupSubscriptions);
         window.addEventListener('pagehide', cleanupSubscriptions);
+
+        // Apply mobile styles on resize (only after DOM is ready)
+        window.addEventListener('resize', () => {
+            if (document.getElementById('chat-widget-window')) {
+                applyMobileStyles();
+            }
+        });
 
         console.log('ChatWidget: Initialized successfully');
     }
@@ -1267,6 +1311,7 @@
             
             if (isOpen && chatWindow) {
                 chatWindow.style.display = 'flex';
+                applyMobileStyles(); // Apply mobile styles when restoring state
                 if (button) button.style.display = 'none';
                 
                 if (hasSubmittedInfo || hasActiveRoom) {
@@ -1274,10 +1319,10 @@
                     if (welcomeForm) welcomeForm.style.display = 'none';
                 } else {
                     if (chatContainer) chatContainer.style.display = 'none';
-                if (welcomeForm) welcomeForm.style.display = 'flex';
+                    if (welcomeForm) welcomeForm.style.display = 'flex';
+                }
             }
         }
-    }
 
     function playNotificationSound() {
         try {
@@ -1406,6 +1451,11 @@
 
         document.body.appendChild(container);
         console.log('ChatWidget: UI created and added to DOM');
+        
+        // Apply mobile styles after DOM creation (use requestAnimationFrame to ensure DOM is ready)
+        requestAnimationFrame(() => {
+            applyMobileStyles();
+        });
     }
 
     function addEventListeners() {
@@ -1517,10 +1567,13 @@
         isOpen = true;
         localStorage.setItem(STORAGE_KEYS.IS_OPEN, 'true');
         
-        const window = document.getElementById('chat-widget-window');
+        const chatWindow = document.getElementById('chat-widget-window');
         const button = document.getElementById('chat-widget-button');
         
-        if (window) window.style.display = 'flex';
+        if (chatWindow) {
+            chatWindow.style.display = 'flex';
+            applyMobileStyles();
+        }
         if (button) button.style.display = 'none';
         
         hideUnreadBadge();
@@ -1535,10 +1588,10 @@
         isOpen = false;
         localStorage.setItem(STORAGE_KEYS.IS_OPEN, 'false');
         
-        const window = document.getElementById('chat-widget-window');
+        const chatWindow = document.getElementById('chat-widget-window');
         const button = document.getElementById('chat-widget-button');
         
-        if (window) window.style.display = 'none';
+        if (chatWindow) chatWindow.style.display = 'none';
         if (button) button.style.display = 'flex';
         
         // Limpar subscriptions ao fechar (economiza recursos)
