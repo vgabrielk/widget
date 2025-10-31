@@ -244,8 +244,10 @@
             /* Chat Container */
             #chat-widget-chat-container {
                 flex: 1;
+                display: flex;
                 flex-direction: column;
                 overflow: hidden;
+                min-height: 0;
             }
 
             #chat-widget-messages {
@@ -253,6 +255,9 @@
                 overflow-y: auto;
                 padding: 24px;
                 background: white;
+                min-height: 0;
+                -webkit-overflow-scrolling: touch;
+                overscroll-behavior: contain;
             }
 
             /* Input Area */
@@ -260,6 +265,7 @@
                 padding: 16px 20px;
                 border-top: 1px solid #F3F4F6;
                 background: white;
+                flex-shrink: 0;
             }
 
             #chat-widget-closed-notice {
@@ -1240,8 +1246,14 @@
             avatarImg.style.borderRadius = '50%';
             avatar.appendChild(avatarImg);
         } else {
-            // Fallback para inicial do nome
-            avatar.textContent = (message.sender_name || 'V').charAt(0).toUpperCase();
+            // Fallback para inicial do nome - sempre mostrar pelo menos uma letra
+            const initials = message.sender_name 
+                ? message.sender_name.trim().charAt(0).toUpperCase()
+                : (isVisitor ? 'V' : 'S');
+            avatar.textContent = initials;
+            // Garantir que o avatar seja visível
+            avatar.style.display = 'flex';
+            avatar.style.visibility = 'visible';
         }
 
         // Message bubble
