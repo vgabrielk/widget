@@ -147,16 +147,12 @@ export default function SettingsPage() {
   }
 
   return (
-    <DashboardLayout email={user?.email || ''}>
-      <div className="container mx-auto py-6 sm:py-8 px-4 sm:px-6">
-        <div className="w-full mx-auto space-y-6 sm:space-y-8">
-          {/* Header */}
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Configurações</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">
-              Gerencie suas configurações de conta e preferências
-            </p>
-          </div>
+    <DashboardLayout
+      email={user?.email || ''}
+      title="Configurações"
+      description="Gerencie suas configurações de conta e preferências"
+    >
+      <div className="space-y-6">
 
           {/* Status Messages */}
           {error && (
@@ -507,7 +503,6 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
       </div>
     </DashboardLayout>
   );
