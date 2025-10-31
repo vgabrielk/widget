@@ -47,10 +47,6 @@
     let hasSubmittedInfo = false;
     let hasActiveRoom = false;
     let selectedImage = null;
-    let notificationAudio = null;
-    let notificationAudioPlaying = false;
-    let lastNotificationTime = 0;
-    const NOTIFICATION_COOLDOWN = 2000; // 2 segundos entre notificações
     let heartbeatInterval = null;
     
     // Rate limiting
@@ -420,6 +416,12 @@
                 background: #F3F4F6;
                 color: #111827;
                 border-bottom-left-radius: 4px;
+            }
+
+            /* Remover background quando só tem imagem */
+            .chat-message-bubble.no-background {
+                background: transparent !important;
+                padding: 0 !important;
             }
 
             .chat-message-content {
@@ -975,7 +977,6 @@
                     
                     // Se widget está fechado e mensagem é do atendente
                     if (!isOpen && message.sender_type === 'agent') {
-                        playNotificationSound();
                         showSystemNotification(message);
                         showUnreadBadge();
                     }
@@ -1243,7 +1244,15 @@
 
         // Message bubble
             const bubble = document.createElement('div');
-        bubble.className = `chat-message-bubble ${isVisitor ? 'visitor' : 'agent'}`;
+        // Aplicar background apenas se tiver conteúdo de texto
+        const hasOnlyImage = message.image_url && !message.content;
+        bubble.className = `chat-message-bubble ${isVisitor ? 'visitor' : 'agent'} ${hasOnlyImage ? 'no-background' : ''}`;
+        
+        // Ajustar padding: remover se só tem imagem
+        if (hasOnlyImage) {
+            bubble.style.padding = '0';
+            bubble.style.background = 'transparent';
+        }
 
             if (message.content) {
                 const content = document.createElement('p');
@@ -1320,52 +1329,6 @@
                 }
             }
         }
-
-    function playNotificationSound() {
-        try {
-            const now = Date.now();
-            
-            // Prevent multiple notifications within cooldown period
-            if (now - lastNotificationTime < NOTIFICATION_COOLDOWN) {
-                return;
-            }
-            
-            // Prevent if already playing
-            if (notificationAudioPlaying) {
-                return;
-            }
-            
-            if (!notificationAudio) {
-                notificationAudio = new Audio(`${API_BASE}/notification.mp3`);
-                notificationAudio.volume = 0.5;
-                
-                // Reset audio when it finishes playing
-                notificationAudio.addEventListener('ended', () => {
-                    notificationAudioPlaying = false;
-                    if (notificationAudio) {
-                        notificationAudio.currentTime = 0;
-                    }
-                });
-                
-                notificationAudio.addEventListener('error', () => {
-                    notificationAudioPlaying = false;
-                });
-            }
-            
-            // Reset audio to beginning and play
-            notificationAudio.currentTime = 0;
-            notificationAudioPlaying = true;
-            lastNotificationTime = now;
-            
-            notificationAudio.play().catch(err => {
-                console.log('ChatWidget: Could not play notification sound:', err);
-                notificationAudioPlaying = false;
-            });
-        } catch (error) {
-            console.log('ChatWidget: Error playing notification sound:', error);
-            notificationAudioPlaying = false;
-        }
-    }
 
     function showSystemNotification(message) {
         if ('Notification' in window && Notification.permission === 'granted') {

@@ -55,6 +55,21 @@ export default function RoomDetailPage() {
   const roomId = params.roomId as string;
   const { user, profile, loading: userLoading } = useUser();
   
+  // Use refs to avoid causing re-renders when profile changes
+  const profileAvatarRef = useRef<string | null>(null);
+  
+  // Memoize profile values to avoid re-renders - only update ref when avatar file path actually changes
+  const avatarPathBase = useMemo(() => {
+    return profile?.avatar_url?.split('?token=')[0] || null;
+  }, [profile?.avatar_url?.split('?token=')[0]]);
+  
+  // Update avatar ref only when the actual file path changes (not just the token)
+  useEffect(() => {
+    if (avatarPathBase && profile?.avatar_url) {
+      profileAvatarRef.current = profile.avatar_url;
+    }
+  }, [avatarPathBase, profile?.avatar_url]);
+  
   const { messages, setMessages, addMessage, clearMessages } = useInboxStore();
   const { confirm, AlertDialogComponent } = useAlertDialog();
   const { error: showError, ToastContainer } = useToast();
@@ -70,12 +85,37 @@ export default function RoomDetailPage() {
   const currentRoomIdRef = useRef<string | null>(null);
   const messageChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const widgetLoadingRef = useRef(false);
+  const roomLoadingRef = useRef(false);
+  const loadedWidgetIdRef = useRef<string | null>(null);
+  const loadedRoomIdRef = useRef<string | null>(null);
   
   const supabase = useMemo(() => createClient(), []);
+
+  // Reset refs when widgetId or roomId changes
+  useEffect(() => {
+    if (loadedWidgetIdRef.current !== widgetId) {
+      loadedWidgetIdRef.current = null;
+      widgetLoadingRef.current = false;
+    }
+    if (loadedRoomIdRef.current !== roomId) {
+      loadedRoomIdRef.current = null;
+      roomLoadingRef.current = false;
+    }
+  }, [widgetId, roomId]);
 
   // Load widget
   useEffect(() => {
     if (!widgetId || userLoading || !user) return;
+    
+    // Prevent multiple simultaneous loads
+    if (widgetLoadingRef.current && loadedWidgetIdRef.current === widgetId) return;
+    
+    // Only reload if widgetId changed
+    if (loadedWidgetIdRef.current === widgetId) return;
+    
+    widgetLoadingRef.current = true;
+    loadedWidgetIdRef.current = widgetId;
     
     const loadWidget = async () => {
       try {
@@ -86,20 +126,39 @@ export default function RoomDetailPage() {
         
         if (!res.ok) throw new Error('Failed to load widget');
         const widgetData = await res.json();
-        setWidget(widgetData);
+        
+        // Only update if widgetId hasn't changed
+        if (loadedWidgetIdRef.current === widgetId) {
+          setWidget(widgetData);
+        }
       } catch (error: any) {
-        setWidgetError(error.message || 'Erro ao carregar widget');
+        if (loadedWidgetIdRef.current === widgetId) {
+          setWidgetError(error.message || 'Erro ao carregar widget');
+        }
       } finally {
-        setIsWidgetLoading(false);
+        if (loadedWidgetIdRef.current === widgetId) {
+          setIsWidgetLoading(false);
+          widgetLoadingRef.current = false;
+        }
       }
     };
     
     loadWidget();
-  }, [widgetId, user, userLoading]);
+  }, [widgetId, userLoading, user]);
 
   // Load room
   useEffect(() => {
     if (!widgetId || !roomId || userLoading || !user) return;
+    
+    // Prevent multiple simultaneous loads
+    if (roomLoadingRef.current && loadedRoomIdRef.current === roomId) return;
+    
+    // Only reload if roomId changed
+    if (loadedRoomIdRef.current === roomId) return;
+    
+    roomLoadingRef.current = true;
+    const currentRoomId = roomId;
+    loadedRoomIdRef.current = currentRoomId;
     
     const loadRoom = async () => {
       try {
@@ -110,23 +169,46 @@ export default function RoomDetailPage() {
         
         if (!res.ok) throw new Error('Failed to load rooms');
         const data = await res.json();
-        const room = data.rooms?.find((r: Room) => r.id === roomId);
+        const room = data.rooms?.find((r: Room) => r.id === currentRoomId);
         
-        if (room) {
-          setSelectedRoom(room);
-        } else {
-          router.push(`/dashboard/widgets/${widgetId}/inbox`);
+        // Only update if roomId hasn't changed
+        if (loadedRoomIdRef.current === currentRoomId) {
+          if (room) {
+            // Only update if room actually changed (prevent unnecessary re-renders)
+            setSelectedRoom((prev) => {
+              if (prev?.id === room.id) {
+                // Room ID is the same, only update if something else changed
+                return prev;
+              }
+              return room;
+            });
+          } else {
+            router.push(`/dashboard/widgets/${widgetId}/inbox`);
+            return;
+          }
         }
       } catch (error: any) {
         console.error('Error loading room:', error);
-        router.push(`/dashboard/widgets/${widgetId}/inbox`);
+        if (loadedRoomIdRef.current === currentRoomId) {
+          router.push(`/dashboard/widgets/${widgetId}/inbox`);
+        }
       } finally {
-        setIsRoomLoading(false);
+        if (loadedRoomIdRef.current === currentRoomId) {
+          setIsRoomLoading(false);
+          roomLoadingRef.current = false;
+        }
       }
     };
     
     loadRoom();
-  }, [widgetId, roomId, user, userLoading, router]);
+    
+    // Cleanup if roomId changes
+    return () => {
+      if (loadedRoomIdRef.current !== currentRoomId) {
+        roomLoadingRef.current = false;
+      }
+    };
+  }, [widgetId, roomId, userLoading, user, router]);
 
   // Load messages
   const loadMessages = useCallback(async (roomId: string) => {
@@ -141,6 +223,24 @@ export default function RoomDetailPage() {
       if (!res.ok) throw new Error('Failed to load messages');
       const data = await res.json();
       setMessages(data.messages || []);
+      
+      // Mark all unread messages as read when opening the conversation
+      const unreadMessages = (data.messages || []).filter(
+        (m: Message) => m.sender_type === 'visitor' && !m.is_read
+      );
+      
+      if (unreadMessages.length > 0) {
+        // Mark all messages as read via API
+        try {
+          await fetch(`/api/widgets/${widgetId}/rooms/${roomId}/messages/read`, {
+            method: 'PATCH',
+            credentials: 'include',
+          });
+        } catch (err) {
+          console.error('Error marking messages as read:', err);
+          // Don't block message loading if this fails
+        }
+      }
       
       // Scroll to bottom after messages are loaded
       setTimeout(() => {
@@ -211,7 +311,15 @@ export default function RoomDetailPage() {
     };
   }, [supabase, addMessage, widgetId]);
 
-  // Setup presence
+  // Setup presence - use refs to avoid dependency on profile which changes frequently
+  const profileFullNameRef = useRef<string | null>(null);
+  const userEmailRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (profile?.full_name) profileFullNameRef.current = profile.full_name;
+    if (user?.email) userEmailRef.current = user.email;
+  }, [profile?.full_name, user?.email]);
+  
   useEffect(() => {
     if (!selectedRoom?.id || !user?.id) {
       if (presenceChannelRef.current) {
@@ -224,6 +332,12 @@ export default function RoomDetailPage() {
     }
 
     const roomId = selectedRoom.id;
+    const currentUserId = user.id;
+    
+    // Prevent re-setup if already set up for this room
+    if (presenceChannelRef.current && currentRoomIdRef.current === roomId) {
+      return;
+    }
     
     if (presenceChannelRef.current) {
       presenceChannelRef.current.untrack().catch(console.error);
@@ -235,7 +349,7 @@ export default function RoomDetailPage() {
     const presenceChannel = supabase.channel(channelName, {
       config: {
         presence: {
-          key: `agent:${user.id}`,
+          key: `agent:${currentUserId}`,
         },
       },
     });
@@ -252,11 +366,11 @@ export default function RoomDetailPage() {
         updateVisitorOnlineStatus(presenceChannel.presenceState());
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
+        if (status === 'SUBSCRIBED' && currentRoomIdRef.current === roomId) {
           const agentPresence = {
             user: 'agent',
-            agent_id: user.id,
-            agent_name: profile?.full_name || user.email?.split('@')[0] || 'Suporte',
+            agent_id: currentUserId,
+            agent_name: profileFullNameRef.current || userEmailRef.current?.split('@')[0] || 'Suporte',
             online_at: new Date().toISOString(),
           };
           await presenceChannel.track(agentPresence);
@@ -279,7 +393,9 @@ export default function RoomDetailPage() {
         }
         if (visitorFound) break;
       }
-      setIsVisitorOnline(visitorFound);
+      if (currentRoomIdRef.current === roomId) {
+        setIsVisitorOnline(visitorFound);
+      }
     }
 
     return () => {
@@ -288,9 +404,11 @@ export default function RoomDetailPage() {
         supabase.removeChannel(presenceChannelRef.current);
         presenceChannelRef.current = null;
       }
-      setIsVisitorOnline(false);
+      if (currentRoomIdRef.current === roomId) {
+        setIsVisitorOnline(false);
+      }
     };
-  }, [selectedRoom?.id, user?.id, profile?.full_name, user?.email, supabase]);
+  }, [selectedRoom?.id, user?.id, supabase]);
 
   // Handle room selection
   useEffect(() => {
@@ -354,6 +472,10 @@ export default function RoomDetailPage() {
       
       setInputValue('');
       
+      // Use refs to avoid dependency on profile
+      const senderName = profileFullNameRef.current || userEmailRef.current?.split('@')[0] || 'Suporte';
+      const senderAvatar = profileAvatarRef.current || null; // Use ref to avoid re-renders
+      
       const res = await fetch(`/api/widgets/${widgetId}/rooms/${roomIdAtSend}/messages`, {
         method: 'POST',
         headers: {
@@ -362,8 +484,8 @@ export default function RoomDetailPage() {
         credentials: 'include',
         body: JSON.stringify({
           content: messageContent,
-          sender_name: profile?.full_name || 'Suporte',
-          sender_avatar: profile?.avatar_url || null,
+          sender_name: senderName,
+          sender_avatar: senderAvatar,
           message_type: 'text',
         }),
       });
@@ -377,7 +499,7 @@ export default function RoomDetailPage() {
       setInputValue(messageContent);
       showError(error.message || 'Erro ao enviar mensagem. Tente novamente.');
     }
-  }, [inputValue, selectedRoom, widgetId, profile, showError]);
+  }, [inputValue, selectedRoom, widgetId, showError]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -427,10 +549,21 @@ export default function RoomDetailPage() {
     }
   }, [widgetId, showError]);
 
+  // Memoize email to prevent re-renders when user object reference changes
+  // Must be defined before any conditional returns
+  const userEmail = useMemo(() => user?.email || '', [user?.email]);
+  
+  // Memoize avatar URL by file path (without token) to prevent re-renders when only token changes
+  const avatarUrl = useMemo(() => {
+    if (!profile?.avatar_url) return null;
+    return profile.avatar_url;
+  }, [profile?.avatar_url?.split('?token=')[0]]);
+
   if (isWidgetLoading || isRoomLoading) {
     return (
       <DashboardLayout
-        email={user?.email || ''}
+        email={userEmail}
+        avatarUrl={avatarUrl}
         title={widget?.name || 'Widget'}
         description="Carregando..."
       >
@@ -440,11 +573,12 @@ export default function RoomDetailPage() {
       </DashboardLayout>
     );
   }
-
+  
   if (widgetError || !selectedRoom) {
     return (
       <DashboardLayout
-        email={user?.email || ''}
+        email={userEmail}
+        avatarUrl={avatarUrl}
         title="Erro"
         description="Erro ao carregar"
       >
@@ -466,7 +600,8 @@ export default function RoomDetailPage() {
 
   return (
     <DashboardLayout
-      email={user?.email || ''}
+      email={userEmail}
+      avatarUrl={avatarUrl}
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
@@ -609,24 +744,38 @@ export default function RoomDetailPage() {
                           
                           <div className={`flex flex-col ${isAgent ? 'items-end' : 'items-start'} max-w-[75%] sm:max-w-[70%]`}>
                             <div
-                              className={`rounded-2xl px-3 sm:px-4 py-2 sm:py-3 ${
-                                isAgent
-                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                  : 'bg-background border rounded-tl-sm'
+                              className={`rounded-2xl ${
+                                message.image_url && !message.content
+                                  ? 'px-0 py-0' // Sem padding quando só tem imagem
+                                  : 'px-3 sm:px-4 py-2 sm:py-3' // Padding quando tem texto
+                              } ${
+                                // Aplicar background apenas se tiver conteúdo de texto
+                                message.content
+                                  ? isAgent
+                                    ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                    : 'bg-background border rounded-tl-sm'
+                                  : '' // Sem background se só tiver imagem
                               }`}
                             >
-                              <p className={`text-xs mb-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                                {message.sender_name}
-                              </p>
-                              
                               {message.content && (
-                                <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">
-                                  {message.content}
-                                </p>
+                                <>
+                                  <p className={`text-xs mb-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                    {message.sender_name}
+                                  </p>
+                                  
+                                  <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">
+                                    {message.content}
+                                  </p>
+                                </>
                               )}
                               
                               {message.image_url && (
-                                <div className="mt-2">
+                                <div className={message.content ? 'mt-2' : ''}>
+                                  {!message.content && (
+                                    <p className={`text-xs mb-1 ${isAgent ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
+                                      {message.sender_name}
+                                    </p>
+                                  )}
                                   <img
                                     src={message.image_url}
                                     alt={message.image_name || 'Imagem'}
@@ -635,7 +784,7 @@ export default function RoomDetailPage() {
                                     onClick={() => message.image_url && window.open(message.image_url, '_blank')}
                                   />
                                   {message.image_name && (
-                                    <p className={`text-xs mt-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                    <p className={`text-xs mt-1 ${isAgent && message.content ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                                       {message.image_name}
                                     </p>
                                   )}

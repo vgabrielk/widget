@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 
@@ -42,6 +42,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const fetchingProfileRef = useRef(false);
   const initializedRef = useRef(false);
+  const loadedUserIdRef = useRef<string | null>(null); // Track loaded user ID to prevent stale updates
+  const backgroundRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load from cache
   const loadFromCache = useCallback((): UserProfile | null => {
@@ -127,7 +129,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Refresh profile (bypasses cache)
+  // Refresh profile (bypasses cache) - memoize to prevent recreation
   const refreshProfile = useCallback(async () => {
     if (!user) return;
 
@@ -138,20 +140,22 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const profileData = await fetchProfile(user.id, true);
       if (profileData) {
         // Compare with current profile to avoid unnecessary updates
-        const currentAvatarPath = getAvatarFilePath(profile?.avatar_url || null);
+        const currentProfile = profile; // Capture at call time
+        const currentAvatarPath = getAvatarFilePath(currentProfile?.avatar_url || null);
         const newAvatarPath = getAvatarFilePath(profileData.avatar_url);
         
         const profileChanged = 
-          profile?.full_name !== profileData.full_name ||
-          profile?.company_name !== profileData.company_name ||
+          !currentProfile ||
+          currentProfile.full_name !== profileData.full_name ||
+          currentProfile.company_name !== profileData.company_name ||
           currentAvatarPath !== newAvatarPath;
         
-        if (profileChanged || !profile) {
+        if (profileChanged) {
           setProfile(profileData);
           saveToCache(profileData);
         } else {
           // Only signed URL changed, update cache but not state
-          const updatedProfile = { ...profile, avatar_url: profileData.avatar_url };
+          const updatedProfile = { ...currentProfile, avatar_url: profileData.avatar_url };
           saveToCache(updatedProfile);
         }
       }
@@ -160,9 +164,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user, profile, fetchProfile, saveToCache, getAvatarFilePath]);
+  }, [user, fetchProfile, saveToCache, getAvatarFilePath]); // Removed profile from deps
 
-  // Update profile via API route
+  // Update profile via API route - memoize to prevent recreation
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) throw new Error('No user logged in');
 
@@ -185,25 +189,35 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const updatedProfile = data.profile as UserProfile;
       
       // Compare avatar file path to see if it actually changed
-      const currentAvatarPath = getAvatarFilePath(profile?.avatar_url || null);
-      const newAvatarPath = getAvatarFilePath(updatedProfile.avatar_url);
-      
-      // Only update state if avatar file actually changed or other fields changed
-      const shouldUpdate = 
-        !profile ||
-        profile.full_name !== updatedProfile.full_name ||
-        profile.company_name !== updatedProfile.company_name ||
-        currentAvatarPath !== newAvatarPath;
-      
-      if (shouldUpdate) {
-        setProfile(updatedProfile);
-      }
-      saveToCache(updatedProfile);
+      setProfile((currentProfile) => {
+        if (!currentProfile) {
+          saveToCache(updatedProfile);
+          return updatedProfile;
+        }
+        
+        const currentAvatarPath = getAvatarFilePath(currentProfile.avatar_url || null);
+        const newAvatarPath = getAvatarFilePath(updatedProfile.avatar_url);
+        
+        // Only update state if avatar file actually changed or other fields changed
+        const shouldUpdate = 
+          currentProfile.full_name !== updatedProfile.full_name ||
+          currentProfile.company_name !== updatedProfile.company_name ||
+          currentAvatarPath !== newAvatarPath;
+        
+        if (shouldUpdate) {
+          saveToCache(updatedProfile);
+          return updatedProfile;
+        } else {
+          // Only token changed, update cache but not state
+          saveToCache({ ...currentProfile, avatar_url: updatedProfile.avatar_url });
+          return currentProfile;
+        }
+      });
     } catch (err: any) {
       console.error('Error updating profile:', err);
       throw new Error(err.message || 'Failed to update profile');
     }
-  }, [user, profile, saveToCache, getAvatarFilePath]);
+  }, [user, saveToCache, getAvatarFilePath]); // Removed profile from deps
 
   // Upload avatar via API route
   const uploadAvatar = useCallback(async (file: File): Promise<string> => {
@@ -240,7 +254,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const avatarUrl = data.avatar_url as string;
       const updatedProfile = data.profile as UserProfile;
 
-      // Update local state
+      // Always update on avatar upload (new file uploaded)
       setProfile(updatedProfile);
       saveToCache(updatedProfile);
 
@@ -248,7 +262,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       throw new Error(err.message || 'Failed to upload avatar');
     }
-  }, [user, profile, saveToCache, getAvatarFilePath]);
+  }, [user, saveToCache]); // Removed profile and getAvatarFilePath from deps
 
   // Initialize user and profile
   useEffect(() => {
@@ -271,6 +285,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
 
         setUser(currentUser);
+        loadedUserIdRef.current = currentUser.id;
 
         // Try to load from cache first
         const cachedProfile = loadFromCache();
@@ -278,40 +293,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           setProfile(cachedProfile);
           setLoading(false);
           
-          // Fetch fresh data in background ONLY if cache is older than 1 minute
-          const cachedData = typeof window !== 'undefined' ? localStorage.getItem(CACHE_KEY) : null;
-          const cacheTimestamp = cachedData ? JSON.parse(cachedData).timestamp : 0;
-          const cacheAge = Date.now() - cacheTimestamp;
-          const CACHE_REFRESH_INTERVAL = 60 * 1000; // 1 minute
+          // DISABLED: Background refresh causes unnecessary API calls when messages arrive
+          // Only refresh profile when explicitly requested via refreshProfile()
+          // The cache is valid for 5 minutes, which is sufficient for most use cases
           
-          if (cacheAge > CACHE_REFRESH_INTERVAL) {
-            fetchProfile(currentUser.id, true)
-              .then((freshProfile) => {
-                if (freshProfile) {
-                  // Compare only the file path (without token) to see if avatar actually changed
-                  const cachedAvatarPath = getAvatarFilePath(cachedProfile.avatar_url);
-                  const freshAvatarPath = getAvatarFilePath(freshProfile.avatar_url);
-                  
-                  // Also check if any other profile fields changed
-                  const profileChanged = 
-                    cachedProfile.full_name !== freshProfile.full_name ||
-                    cachedProfile.company_name !== freshProfile.company_name ||
-                    cachedAvatarPath !== freshAvatarPath;
-                  
-                  if (profileChanged) {
-                    // Only update if something actually changed
-                    setProfile(freshProfile);
-                    saveToCache(freshProfile);
-                  } else {
-                    // Profile didn't change, just update the signed URL in cache (refresh token)
-                    // but don't trigger a state update to avoid image reload
-                    const updatedProfile = { ...cachedProfile, avatar_url: freshProfile.avatar_url };
-                    saveToCache(updatedProfile);
-                  }
-                }
-              })
-              .catch(console.error);
-          }
+          // If you need fresh data, use refreshProfile() explicitly or wait for cache expiry
         } else {
           // No cache, fetch from database via API
           const profileData = await fetchProfile(currentUser.id, true);
@@ -397,10 +383,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
+      // Clear background refresh timeout on unmount
+      if (backgroundRefreshTimeoutRef.current) {
+        clearTimeout(backgroundRefreshTimeoutRef.current);
+        backgroundRefreshTimeoutRef.current = null;
+      }
     };
   }, [supabase, loadFromCache, saveToCache, clearCache, fetchProfile, getAvatarFilePath]);
 
-  const value: UserContextType = {
+  // Memoize the context value to prevent unnecessary re-renders of all consumers
+  const value: UserContextType = useMemo(() => ({
     user,
     profile,
     loading,
@@ -408,7 +400,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     refreshProfile,
     updateProfile,
     uploadAvatar,
-  };
+  }), [user, profile, loading, error, refreshProfile, updateProfile, uploadAvatar]);
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }

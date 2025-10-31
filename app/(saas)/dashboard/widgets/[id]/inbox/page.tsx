@@ -1794,24 +1794,38 @@ export default function InboxPage() {
                       
                       <div className={`flex flex-col ${isAgent ? 'items-end' : 'items-start'} max-w-[75%] sm:max-w-[70%]`}>
                         <div
-                          className={`rounded-2xl px-3 sm:px-4 py-2 sm:py-3 ${
-                            isAgent
-                              ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                              : 'bg-background border rounded-tl-sm'
+                          className={`rounded-2xl ${
+                            message.image_url && !message.content
+                              ? 'px-0 py-0' // Sem padding quando só tem imagem
+                              : 'px-3 sm:px-4 py-2 sm:py-3' // Padding quando tem texto
+                          } ${
+                            // Aplicar background apenas se tiver conteúdo de texto
+                            message.content
+                              ? isAgent
+                                ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                : 'bg-background border rounded-tl-sm'
+                              : '' // Sem background se só tiver imagem
                           }`}
                         >
-                          <p className={`text-xs mb-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                            {message.sender_name}
-                          </p>
-                          
                           {message.content && (
-                            <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">
-                              {message.content}
-                            </p>
+                            <>
+                              <p className={`text-xs mb-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                {message.sender_name}
+                              </p>
+                              
+                              <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">
+                                {message.content}
+                              </p>
+                            </>
                           )}
                           
                           {message.image_url && (
-                            <div className="mt-2">
+                            <div className={message.content ? 'mt-2' : ''}>
+                              {!message.content && (
+                                <p className={`text-xs mb-1 ${isAgent ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
+                                  {message.sender_name}
+                                </p>
+                              )}
                               <img
                                 src={message.image_url}
                                 alt={message.image_name || 'Imagem'}
@@ -1820,7 +1834,7 @@ export default function InboxPage() {
                                 onClick={() => message.image_url && window.open(message.image_url, '_blank')}
                               />
                               {message.image_name && (
-                                <p className={`text-xs mt-1 ${isAgent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                <p className={`text-xs mt-1 ${isAgent && message.content ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                                   {message.image_name}
                                 </p>
                               )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { DashboardSidebar } from './dashboard-sidebar';
 import { NotificationBell } from './notification-bell';
 import { createClient } from '@/lib/supabase/client';
@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetTitle } from './ui/sheet';
 interface DashboardLayoutProps {
   children: React.ReactNode;
   email?: string;
+  avatarUrl?: string | null;
   title?: string;
   description?: string;
 }
@@ -21,6 +22,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({
   children,
   email,
+  avatarUrl,
   title,
   description,
 }: DashboardLayoutProps) {
@@ -37,17 +39,24 @@ export function DashboardLayout({
     getUser();
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
     router.push('/auth/login');
     router.refresh();
-  };
+  }, [supabase, router]);
+  
+  const handleNavigate = useCallback(() => {
+    setIsMobileMenuOpen(false);
+  }, []);
+  
+  // Memoize email to prevent re-renders when prop changes reference
+  const memoizedEmail = useMemo(() => email || '', [email]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block w-64 flex-shrink-0" style={{ width: '256px', minWidth: '256px', maxWidth: '256px' }}>
-        <DashboardSidebar email={email} onLogout={handleLogout} />
+        <DashboardSidebar email={memoizedEmail} avatarUrl={avatarUrl} onLogout={handleLogout} />
       </div>
 
       {/* Mobile Menu */}
@@ -55,9 +64,10 @@ export function DashboardLayout({
         <SheetContent side="left" className="p-0 w-64">
           <SheetTitle className="sr-only">Menu de Navegação</SheetTitle>
           <DashboardSidebar 
-            email={email} 
+            email={memoizedEmail} 
+            avatarUrl={avatarUrl}
             onLogout={handleLogout} 
-            onNavigate={() => setIsMobileMenuOpen(false)}
+            onNavigate={handleNavigate}
           />
         </SheetContent>
       </Sheet>

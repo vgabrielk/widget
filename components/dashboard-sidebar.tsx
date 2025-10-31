@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -15,14 +16,14 @@ import {
   LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { JelloLogoCompact } from '@/components/jello-logo';
-import { useUser } from '@/lib/contexts/user-context';
+import { SidebarLogo } from '@/components/sidebar-logo';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface SidebarProps {
   email?: string;
+  avatarUrl?: string | null;
   onLogout?: () => void;
   onNavigate?: () => void;
 }
@@ -74,22 +75,14 @@ const settingsNavItems: NavItem[] = [
   },
 ];
 
-export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) {
+const DashboardSidebarComponent = ({ email, avatarUrl, onLogout, onNavigate }: SidebarProps) => {
   const pathname = usePathname();
-  const { profile, loading: userLoading } = useUser();
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return pathname === href;
     }
     return pathname.startsWith(href);
-  };
-
-  const getInitials = (email: string) => {
-    return email
-      .split('@')[0]
-      .substring(0, 2)
-      .toUpperCase();
   };
 
   const handleNavClick = () => {
@@ -161,7 +154,7 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
 
       {/* User Profile */}
       <div className="border-t border-[hsl(var(--sidebar-border))] p-4">
-        {userLoading || !email ? (
+        {!email ? (
           <div className="flex items-center gap-3 rounded-lg p-3">
             <Skeleton className="h-10 w-10 rounded-full flex-shrink-0" />
             <div className="flex-1 overflow-hidden min-w-0 space-y-2">
@@ -171,17 +164,10 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
           </div>
         ) : (
           <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-muted/50 transition-colors">
-            <Avatar className="h-10 w-10 shadow-sm flex-shrink-0">
-              {profile?.avatar_url && (
-                <AvatarImage src={profile.avatar_url} alt={profile.full_name || email || 'User'} />
-              )}
-              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                {email ? getInitials(email) : 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <SidebarLogo email={email} avatarUrl={avatarUrl} size={40} />
             <div className="flex-1 overflow-hidden min-w-0" style={{ maxWidth: 'calc(100% - 52px)' }}>
               <p className="text-sm font-medium truncate block">
-                {profile?.full_name || email?.split('@')[0] || 'User'}
+                {email?.split('@')[0] || 'User'}
               </p>
               <p className="text-xs text-muted-foreground truncate block" title={email}>
                 {email}
@@ -203,5 +189,18 @@ export function DashboardSidebar({ email, onLogout, onNavigate }: SidebarProps) 
       </div>
     </aside>
   );
-}
+};
+
+// Memoize component to prevent re-renders when parent re-renders
+// Only re-render if email, avatarUrl, or callback references actually change
+export const DashboardSidebar = memo(DashboardSidebarComponent, (prevProps, nextProps) => {
+  // Compare avatar URL by file path (without token) to avoid re-renders when only token changes
+  const prevAvatarPath = prevProps.avatarUrl?.split('?token=')[0] || null;
+  const nextAvatarPath = nextProps.avatarUrl?.split('?token=')[0] || null;
+  
+  return prevProps.email === nextProps.email &&
+         prevAvatarPath === nextAvatarPath &&
+         prevProps.onLogout === nextProps.onLogout &&
+         prevProps.onNavigate === nextProps.onNavigate;
+});
 

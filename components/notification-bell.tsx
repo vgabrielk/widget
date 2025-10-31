@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { Bell, MessageSquare, CheckCheck, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useTabNotification } from '@/hooks/use-tab-notification';
 
 interface Notification {
   id: string;
@@ -39,205 +40,233 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   const router = useRouter();
   const supabase = createClient();
 
+  // Tab title notification hook
+  const { restoreTitle } = useTabNotification({
+    hasNotifications: unreadCount > 0,
+  });
+
+  const previousUnreadCountRef = useRef(0);
+
   const loadNotifications = useCallback(async () => {
     try {
-      // Get user's widgets
-      const { data: widgets } = await supabase
-        .from('widgets')
-        .select('id')
-        .eq('user_id', userId);
+      const res = await fetch('/api/user/notifications', {
+        credentials: 'include',
+      });
 
-      if (!widgets || widgets.length === 0) {
-        setLoading(false);
-        return;
+      if (!res.ok) {
+        throw new Error('Failed to load notifications');
       }
 
-      const widgetIds = widgets.map(w => w.id);
-
-      // Get unread messages count from rooms
-      const { data: rooms } = await supabase
-        .from('rooms')
-        .select('id, widget_id, unread_count, visitor_name, last_message_at, last_message_preview, widgets!inner(name)')
-        .in('widget_id', widgetIds)
-        .gt('unread_count', 0)
-        .order('last_message_at', { ascending: false })
-        .limit(10);
-
-      if (rooms) {
-        // Convert rooms to notifications
-        const notifs: Notification[] = rooms.map((room: any) => ({
-          id: room.id,
-          type: 'new_message',
-          title: `Nova mensagem de ${room.visitor_name || 'Visitante'}`,
-          message: room.last_message_preview || 'Mensagem recebida',
-          room_id: room.id,
-          widget_id: room.widget_id,
-          is_read: false,
-          created_at: room.last_message_at,
-        }));
-
-        setNotifications(notifs);
-        
-        // Calculate total unread
-        const total = rooms.reduce((sum: number, room: any) => sum + (room.unread_count || 0), 0);
-        setUnreadCount(total);
+      const data = await res.json();
+      const newNotifications = data.notifications || [];
+      const newUnreadCount = data.unreadCount || 0;
+      
+      // Show browser notification if unread count increased
+      if (previousUnreadCountRef.current < newUnreadCount && newNotifications.length > 0) {
+        const newestNotification = newNotifications[0];
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Nova Mensagem no ChatWidget', {
+            body: newestNotification.message || 'Você recebeu uma nova mensagem de um visitante',
+            icon: '/icon.png',
+            tag: `notification-${newestNotification.id}`,
+            requireInteraction: false,
+          });
+        }
       }
+      
+      previousUnreadCountRef.current = newUnreadCount;
+      setNotifications(newNotifications);
+      setUnreadCount(newUnreadCount);
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
       setLoading(false);
     }
-  }, [userId, supabase]);
-
-  // Notification audio state - use ref to persist across renders
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
-  const notificationPlayingRef = useRef<boolean>(false);
-  const lastNotificationTimeRef = useRef<number>(0);
-  const NOTIFICATION_COOLDOWN = 2000; // 2 segundos entre notificações
-
-  const playNotificationSound = useCallback(() => {
-    try {
-      const now = Date.now();
-      
-      // Prevent multiple notifications within cooldown period
-      if (now - lastNotificationTimeRef.current < NOTIFICATION_COOLDOWN) {
-        return;
-      }
-      
-      // Prevent if already playing
-      if (notificationPlayingRef.current) {
-        return;
-      }
-      
-      // Create audio element if it doesn't exist
-      if (!notificationAudioRef.current) {
-        notificationAudioRef.current = new Audio('/notification.mp3');
-        notificationAudioRef.current.volume = 0.5;
-        
-        // Reset audio when it finishes playing
-        notificationAudioRef.current.addEventListener('ended', () => {
-          notificationPlayingRef.current = false;
-          if (notificationAudioRef.current) {
-            notificationAudioRef.current.currentTime = 0;
-          }
-        });
-        
-        notificationAudioRef.current.addEventListener('error', () => {
-          notificationPlayingRef.current = false;
-        });
-      }
-      
-      // Reset audio to beginning and play
-      notificationAudioRef.current.currentTime = 0;
-      notificationPlayingRef.current = true;
-      lastNotificationTimeRef.current = now;
-      
-      notificationAudioRef.current.play().catch(() => {
-        notificationPlayingRef.current = false;
-      });
-    } catch (error) {
-      notificationPlayingRef.current = false;
-    }
   }, []);
 
+  // Debounce loadNotifications to prevent excessive calls
+  const loadingNotificationsRef = useRef(false);
+  const loadNotificationsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const DEBOUNCE_DELAY = 500; // 500ms debounce for UI updates
+  
+  const debouncedLoadNotifications = useCallback(async () => {
+    // Clear existing timeout
+    if (loadNotificationsTimeoutRef.current) {
+      clearTimeout(loadNotificationsTimeoutRef.current);
+    }
+    
+    // Skip if already loading
+    if (loadingNotificationsRef.current) {
+      // Schedule for after current load finishes
+      loadNotificationsTimeoutRef.current = setTimeout(() => {
+        debouncedLoadNotifications();
+      }, DEBOUNCE_DELAY);
+      return;
+    }
+    
+    // Schedule load with debounce
+    loadNotificationsTimeoutRef.current = setTimeout(async () => {
+      if (loadingNotificationsRef.current) return;
+      
+      loadingNotificationsRef.current = true;
+      try {
+        await loadNotifications();
+      } finally {
+        loadingNotificationsRef.current = false;
+      }
+    }, DEBOUNCE_DELAY);
+  }, [loadNotifications]);
+
+  // Cache user's widget IDs
+  const userWidgetIdsRef = useRef<Set<string>>(new Set());
+  const subscriptionChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
   const subscribeToNotifications = useCallback(() => {
-    // Subscribe to rooms updates (which includes message counts)
-    // Note: We subscribe to rooms instead of messages to avoid RLS issues
-    const channel = supabase
-      .channel(`notifications-${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'rooms',
-        },
-        async (payload) => {
-          const oldRoom = payload.old as any;
-          const newRoom = payload.new as any;
-          
-          // Check if unread_count increased (new message from visitor)
-          if (newRoom.unread_count > (oldRoom.unread_count || 0)) {
-            // Reload notifications
-            await loadNotifications();
-            
-            // Play notification sound
-            playNotificationSound();
-            
-            // Show browser notification
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Nova Mensagem no ChatWidget', {
-                body: newRoom.last_message_preview || 'Você recebeu uma nova mensagem de um visitante',
-                icon: '/icon.png',
-                tag: 'chat-message',
-                requireInteraction: false,
-              });
+    // Clean up existing subscription
+    if (subscriptionChannelRef.current) {
+      supabase.removeChannel(subscriptionChannelRef.current);
+      subscriptionChannelRef.current = null;
+    }
+
+    // Get user's widget IDs via API
+    fetch('/api/user/widgets', {
+      credentials: 'include',
+    })
+      .then(res => res.json())
+      .then(({ widgets }) => {
+        if (!widgets || widgets.length === 0) return;
+        
+        const widgetIds = widgets.map((w: { id: string }) => w.id);
+        userWidgetIdsRef.current = new Set(widgetIds);
+        
+        // Create channel for real-time updates (only subscriptions, no queries)
+        const channel = supabase
+          .channel(`notifications-${userId}`, {
+            config: {
+              broadcast: { self: false },
+            },
+          })
+          // Subscribe to new messages (for notifications)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'messages',
+              filter: `sender_type=eq.visitor`,
+            },
+            async (payload) => {
+              const newMessage = payload.new as any;
+              
+              // Update notifications (this will check if room belongs to user's widgets via API)
+              // The API will only return notifications for user's widgets, so it's safe to update
+              debouncedLoadNotifications();
             }
-          } else {
-            // Just reload to keep UI in sync
-            await loadNotifications();
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'rooms',
-        },
-        async () => {
-          await loadNotifications();
-        }
-      )
-      .subscribe();
+          );
+
+        // Subscribe to rooms updates - create separate subscriptions for each widget
+        // because Supabase Realtime doesn't support 'in.()' operator in filters
+        widgetIds.forEach((widgetId) => {
+          channel
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'rooms',
+                filter: `widget_id=eq.${widgetId}`,
+              },
+              (payload) => {
+                const updatedRoom = payload.new as any;
+                const oldRoom = payload.old as any;
+                
+                // Only update if unread_count changed
+                if (oldRoom?.unread_count !== updatedRoom?.unread_count) {
+                  debouncedLoadNotifications();
+                }
+              }
+            );
+        });
+
+        channel
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('🔔 [Notifications] Subscribed to messages and rooms for real-time notifications');
+            } else if (status === 'CHANNEL_ERROR') {
+              console.error('❌ [Notifications] Channel error:', status);
+            }
+          });
+
+        subscriptionChannelRef.current = channel;
+      })
+      .catch((error) => {
+        console.error('Error loading widgets for notifications:', error);
+      });
 
     return () => {
-      supabase.removeChannel(channel);
+      if (subscriptionChannelRef.current) {
+        supabase.removeChannel(subscriptionChannelRef.current);
+        subscriptionChannelRef.current = null;
+      }
+      if (loadNotificationsTimeoutRef.current) {
+        clearTimeout(loadNotificationsTimeoutRef.current);
+        loadNotificationsTimeoutRef.current = null;
+      }
     };
-  }, [userId, supabase, loadNotifications, playNotificationSound]);
+  }, [userId, supabase, debouncedLoadNotifications]);
 
   useEffect(() => {
     if (!userId) return;
     
+    // Initial load
     loadNotifications();
+    
+    // Subscribe to real-time notifications
     const cleanup = subscribeToNotifications();
     
     return () => {
       if (cleanup) cleanup();
+      // Clean up any pending timeouts
+      if (loadNotificationsTimeoutRef.current) {
+        clearTimeout(loadNotificationsTimeoutRef.current);
+        loadNotificationsTimeoutRef.current = null;
+      }
     };
   }, [userId, loadNotifications, subscribeToNotifications]);
 
   const handleNotificationClick = useCallback(async (notification: Notification) => {
-    if (notification.widget_id) {
+    // Restore title when user clicks on notification (views it)
+    restoreTitle();
+    
+    if (notification.widget_id && notification.room_id) {
+      // Navigate directly to the specific conversation using dynamic route
+      router.push(`/dashboard/widgets/${notification.widget_id}/inbox/${notification.room_id}`);
+    } else if (notification.widget_id) {
+      // Fallback to inbox if room_id is missing
       router.push(`/dashboard/widgets/${notification.widget_id}/inbox`);
     }
-  }, [router]);
+  }, [router, restoreTitle]);
 
   const markAllAsRead = useCallback(async () => {
     try {
-      // Get user's widgets
-      const { data: widgets } = await supabase
-        .from('widgets')
-        .select('id')
-        .eq('user_id', userId);
+      const res = await fetch('/api/user/notifications/read-all', {
+        method: 'PATCH',
+        credentials: 'include',
+      });
 
-      if (!widgets) return;
-
-      const widgetIds = widgets.map(w => w.id);
-
-      // Mark all messages in these widgets as read
-      await supabase
-        .from('rooms')
-        .update({ unread_count: 0 })
-        .in('widget_id', widgetIds);
+      if (!res.ok) {
+        throw new Error('Failed to mark all as read');
+      }
 
       setNotifications([]);
       setUnreadCount(0);
+      
+      // Restore title when all notifications are marked as read
+      restoreTitle();
     } catch (error) {
       console.error('Error marking as read:', error);
     }
-  }, [userId, supabase]);
+  }, [restoreTitle]);
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -334,7 +363,10 @@ export function NotificationBell({ userId }: NotificationBellProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="justify-center text-center cursor-pointer py-3"
-              onClick={() => router.push('/dashboard/inbox')}
+              onClick={() => {
+                restoreTitle();
+                router.push('/dashboard/inbox');
+              }}
             >
               <span className="text-xs sm:text-sm font-medium text-primary">
                 Ver todas as conversas
