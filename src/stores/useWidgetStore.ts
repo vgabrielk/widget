@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-type WidgetConfig = {
+export type WidgetConfig = {
   id: string | null
   name: string | null
   brandColor: string

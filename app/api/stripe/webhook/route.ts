@@ -266,12 +266,13 @@ async function handleCheckoutCompleted(
 
     // If this session created a customer, sync it
     if (session.customer) {
-      const customer = await getStripe().customers.retrieve(
+      const customerResponse = await getStripe().customers.retrieve(
         session.customer as string
       );
       
-      if (customer && !customer.deleted) {
-        await handleCustomerUpsert(supabase, customer);
+      // Type guard: check if customer is not deleted
+      if (customerResponse && !customerResponse.deleted && 'created' in customerResponse) {
+        await handleCustomerUpsert(supabase, customerResponse as Stripe.Customer);
       }
     }
 
