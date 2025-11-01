@@ -57,18 +57,38 @@ export default function SignupPage() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Signup error:', error);
+        throw error;
+      }
 
-      setSuccess(true);
-      setTimeout(() => {
-        router.push('/dashboard');
-        router.refresh();
-      }, 2000);
+      // Check if email confirmation is required
+      if (data?.user && !data.session) {
+        // Email confirmation required
+        setError('Por favor, verifique seu email para confirmar sua conta antes de fazer login.');
+        setLoading(false);
+        return;
+      }
+
+      // User is automatically logged in (email confirmation disabled)
+      if (data?.session) {
+        setSuccess(true);
+        setTimeout(() => {
+          router.push('/dashboard');
+          router.refresh();
+        }, 1000);
+      } else {
+        setError('Erro ao criar sessão. Por favor, tente fazer login após confirmar seu email.');
+        setLoading(false);
+      }
     } catch (error: any) {
+      console.error('Signup error details:', error);
       setError(error.message || 'Erro ao criar conta');
-    } finally {
       setLoading(false);
     }
   };

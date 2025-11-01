@@ -46,13 +46,32 @@ export default function LoginPage() {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Login error:', error);
+        // Provide more specific error messages
+        if (error.message.includes('Invalid login credentials')) {
+          setError('Email ou senha incorretos');
+        } else if (error.message.includes('Email not confirmed')) {
+          setError('Por favor, verifique seu email para confirmar sua conta antes de fazer login.');
+        } else {
+          setError(error.message || 'Erro ao fazer login');
+        }
+        setLoading(false);
+        return;
+      }
 
+      if (!data.session) {
+        setError('Erro ao criar sessão. Por favor, tente novamente.');
+        setLoading(false);
+        return;
+      }
+
+      // Successfully logged in
       router.push('/dashboard');
       router.refresh();
     } catch (error: any) {
+      console.error('Login error details:', error);
       setError(error.message || 'Erro ao fazer login');
-    } finally {
       setLoading(false);
     }
   };
