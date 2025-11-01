@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 import { stripe } from '@/lib/stripe';
+import { getCachedEntitlements, setCachedEntitlements } from './entitlements-cache';
 
 /**
  * Feature lookup keys for Stripe Entitlements
@@ -51,6 +52,19 @@ async function getStripeActiveEntitlements(
 export async function getUserEntitlements(
   userId: string
 ): Promise<UserEntitlements> {
+  // Check cache first to avoid repeated heavy queries
+  const cachedPlan = getCachedEntitlements(userId);
+  if (cachedPlan) {
+    console.log('[Entitlements] Using cached plan:', cachedPlan);
+    return {
+      plan: cachedPlan,
+      features: [],
+      hasFeature: () => cachedPlan === 'pro',
+      isPro: cachedPlan === 'pro',
+      isFree: cachedPlan === 'free',
+    };
+  }
+
   const supabase = await createClient();
 
   // Get user's widgets (required for Stripe integration)
@@ -526,8 +540,13 @@ export async function getUserEntitlements(
     console.log('[Entitlements] User is FREE - no active subscription');
   }
 
+  const finalPlan = isPro ? 'pro' : 'free';
+  
+  // Cache the result for faster future lookups
+  setCachedEntitlements(userId, finalPlan);
+
   return {
-    plan: isPro ? 'pro' : 'free',
+    plan: finalPlan,
     features: featureKeys,
     hasFeature: (feature: FeatureKey) => isPro && featureKeys.includes(feature),
     isPro,
