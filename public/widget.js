@@ -272,6 +272,13 @@
                 flex-shrink: 0;
             }
 
+            /* Mobile-specific styles for iPhone Safari */
+            @supports (-webkit-touch-callout: none) {
+                .chat-widget-input-area {
+                    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+                }
+            }
+
             #chat-widget-closed-notice {
                 background: #FEE2E2;
                 border: 1px solid #FECACA;
@@ -630,9 +637,9 @@
             chatWindow.style.setProperty('margin', '0', 'important');
             
             // Ensure input area has proper safe area padding on mobile
-            // This prevents input from being hidden behind iPhone home indicator
+            // This prevents input from being hidden behind iPhone home indicator and Safari URL bar
             if (inputArea) {
-                inputArea.style.setProperty('padding-bottom', 'calc(16px + env(safe-area-inset-bottom))', 'important');
+                inputArea.style.setProperty('padding-bottom', 'calc(32px + env(safe-area-inset-bottom))', 'important');
             }
             
             // Apply safe area to button on mobile
