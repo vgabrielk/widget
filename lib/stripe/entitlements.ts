@@ -508,20 +508,28 @@ export async function getUserEntitlements(
     })
     .filter((key): key is FeatureKey => key !== undefined);
 
-  // User is Pro if they have active subscription OR entitlements
-  const isPro = isSubscriptionActive || featureKeys.length > 0;
+  // User is Pro ONLY if they have active subscription AND it's actually active
+  // CRITICAL: Only trust subscription status, not just entitlements
+  // (entitlements can persist even after cancellation)
+  const isPro = isSubscriptionActive;
 
   console.log('[Entitlements] Final determination:', {
     subscriptionStatus: subscription?.status,
     isSubscriptionActive,
     entitlementsCount: featureKeys.length,
     isPro,
+    note: 'isPro based on active subscription only, not entitlements',
   });
+
+  // CRITICAL: Ensure free users are ALWAYS marked as free
+  if (!isPro) {
+    console.log('[Entitlements] User is FREE - no active subscription');
+  }
 
   return {
     plan: isPro ? 'pro' : 'free',
     features: featureKeys,
-    hasFeature: (feature: FeatureKey) => featureKeys.includes(feature),
+    hasFeature: (feature: FeatureKey) => isPro && featureKeys.includes(feature),
     isPro,
     isFree: !isPro,
   };
