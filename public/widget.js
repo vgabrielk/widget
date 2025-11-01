@@ -362,7 +362,7 @@
                 padding: 12px 14px;
                 border: 1px solid #E5E7EB;
                 border-radius: 24px;
-                font-size: 14px;
+                font-size: 16px;
                 outline: none;
                 background: #F9FAFB;
             }
