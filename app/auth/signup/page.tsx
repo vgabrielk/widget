@@ -80,7 +80,6 @@ export default function SignupPage() {
         setSuccess(true);
         setTimeout(() => {
           router.push('/dashboard');
-          router.refresh();
         }, 1000);
       } else {
         setError('Erro ao criar sessão. Por favor, tente fazer login após confirmar seu email.');

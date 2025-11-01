@@ -42,7 +42,6 @@ export function DashboardLayout({
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
     router.push('/auth/login');
-    router.refresh();
   }, [supabase, router]);
   
   const handleNavigate = useCallback(() => {

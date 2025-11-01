@@ -30,7 +30,6 @@ export function UserMenu({ email, userName }: UserMenuProps) {
     try {
       await supabase.auth.signOut();
       router.push('/');
-      router.refresh();
     } catch (error) {
       console.error('Error logging out:', error);
     } finally {
@@ -96,6 +95,7 @@ export function UserMenu({ email, userName }: UserMenuProps) {
     </DropdownMenu>
   );
 }
+
 
 
 

@@ -13,7 +13,6 @@ export default function LogoutButton() {
     setLoading(true)
     await supabase.auth.signOut()
     router.push('/login')
-    router.refresh()
   }
 
   return (
@@ -26,6 +25,7 @@ export default function LogoutButton() {
     </button>
   )
 }
+
 
 
 

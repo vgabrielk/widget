@@ -46,7 +46,6 @@ export default function LoginPage() {
 
       // Successfully logged in
       router.push('/dashboard');
-      router.refresh();
     } catch (error: any) {
       console.error('Login error details:', error);
       setError(error.message || 'Erro ao fazer login');
