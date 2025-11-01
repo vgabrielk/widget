@@ -39,7 +39,17 @@ export default function NewWidgetPage() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to create widget: ${res.statusText}`);
+        
+        // If upgrade is required, redirect to billing page
+        if (errorData.requiresUpgrade || res.status === 403) {
+          setError(errorData.message || errorData.error || 'Limite de widgets atingido. Faça upgrade para criar mais widgets.');
+          setTimeout(() => {
+            router.push('/dashboard/billing?upgrade=required');
+          }, 2000);
+          return;
+        }
+        
+        throw new Error(errorData.error || errorData.message || `Failed to create widget: ${res.statusText}`);
       }
 
       const data = await res.json();

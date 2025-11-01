@@ -54,30 +54,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check user entitlements to verify they can create widgets
+    // CRITICAL: Check user entitlements to verify they can create widgets
     const { getUserEntitlements } = await import('@/lib/stripe/entitlements');
     const entitlements = await getUserEntitlements(user.id);
 
+    console.log('[Widgets API] User entitlements:', {
+      userId: user.id,
+      plan: entitlements.plan,
+      isPro: entitlements.isPro,
+      isFree: entitlements.isFree,
+    });
+
     // Get current widget count
-    const { data: existingWidgets } = await supabase
+    const { data: existingWidgets, error: widgetsError } = await supabase
       .from('widgets')
       .select('id')
       .eq('user_id', user.id);
 
+    if (widgetsError) {
+      console.error('[Widgets API] Error fetching widgets:', widgetsError);
+      return NextResponse.json(
+        { error: 'Erro ao verificar widgets existentes' },
+        { status: 500 }
+      );
+    }
+
     const widgetCount = existingWidgets?.length || 0;
+
+    console.log('[Widgets API] Widget count:', widgetCount);
 
     // Free plan: allow only 1 widget
     // Pro plan: unlimited widgets
+    // IMPORTANT: This check MUST happen before creating the widget
     if (entitlements.isFree && widgetCount >= 1) {
+      console.log('[Widgets API] BLOCKED: Free plan user trying to create widget beyond limit', {
+        userId: user.id,
+        widgetCount,
+        isFree: entitlements.isFree,
+      });
+      
       return NextResponse.json(
         { 
           error: 'Limite de widgets atingido',
           message: 'O plano gratuito permite apenas 1 widget. Faça upgrade para criar mais widgets.',
-          requiresUpgrade: true
+          requiresUpgrade: true,
+          widgetCount,
+          plan: 'free'
         },
         { status: 403 }
       );
     }
+
+    console.log('[Widgets API] ALLOWED: User can create widget', {
+      userId: user.id,
+      plan: entitlements.plan,
+      widgetCount,
+      willHaveAfter: widgetCount + 1,
+    });
 
     // Parse request body
     const body = await request.json();
@@ -88,6 +121,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Widget name is required' },
         { status: 400 }
+      );
+    }
+
+    // DOUBLE CHECK: Re-verify widget count right before creating (race condition protection)
+    const { data: doubleCheckWidgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('user_id', user.id);
+    
+    const finalWidgetCount = doubleCheckWidgets?.length || 0;
+    
+    console.log('[Widgets API] Final check before creation:', {
+      userId: user.id,
+      plan: entitlements.plan,
+      isFree: entitlements.isFree,
+      currentCount: finalWidgetCount,
+    });
+
+    // Block if free plan and already has 1 widget
+    if (entitlements.isFree && finalWidgetCount >= 1) {
+      console.error('[Widgets API] BLOCKED AT FINAL CHECK: Free plan user has widget limit reached', {
+        userId: user.id,
+        widgetCount: finalWidgetCount,
+      });
+      
+      return NextResponse.json(
+        { 
+          error: 'Limite de widgets atingido',
+          message: 'O plano gratuito permite apenas 1 widget. Faça upgrade para criar mais widgets.',
+          requiresUpgrade: true,
+          widgetCount: finalWidgetCount,
+          plan: 'free'
+        },
+        { status: 403 }
       );
     }
 
