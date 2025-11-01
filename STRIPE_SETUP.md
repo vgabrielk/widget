@@ -294,3 +294,4 @@ SELECT * FROM stripe.customers;
 - [Supabase Vault Documentation](https://supabase.com/docs/guides/database/vault)
 
 
+

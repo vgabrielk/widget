@@ -5,10 +5,76 @@ let stripeInstance: Stripe | null = null;
 
 function getStripeInstance(): Stripe {
   if (!stripeInstance) {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
-    if (!secretKey) {
-      throw new Error('STRIPE_SECRET_KEY environment variable is not set');
+    // Check STRIPE_MODE environment variable first
+    const stripeMode = process.env.STRIPE_MODE?.toLowerCase();
+    const explicitSandbox = stripeMode === 'sandbox';
+    
+    // If in sandbox mode, prioritize sandbox/test keys over live keys
+    let secretKey: string | undefined;
+    
+    if (explicitSandbox) {
+      // In sandbox mode, only use test or sandbox keys (ignore live keys)
+      const sandboxKey = process.env.STRIPE_SECRET_KEY_SANDBOX;
+      const regularKey = process.env.STRIPE_SECRET_KEY;
+      
+      // Prefer sandbox-specific key first
+      if (sandboxKey && !sandboxKey.startsWith('sk_live_')) {
+        secretKey = sandboxKey;
+      } 
+      // Then try regular key, but only if it's test or sandbox
+      else if (regularKey) {
+        const isLive = regularKey.startsWith('sk_live_');
+        const isTest = regularKey.startsWith('sk_test_');
+        const isSandboxKey = regularKey.startsWith('sb_');
+        
+        if (isLive) {
+          console.error('🚨 SECURITY WARNING: STRIPE_MODE=sandbox but LIVE key in STRIPE_SECRET_KEY detected!');
+          console.error('🚨 In sandbox mode, you must use TEST keys (sk_test_*) or SANDBOX keys (sb_*)');
+          console.error('🚨 Options:');
+          console.error('   1. Set STRIPE_SECRET_KEY_SANDBOX to a test/sandbox key');
+          console.error('   2. Change STRIPE_SECRET_KEY to a test key (sk_test_*)');
+          console.error('   3. Remove or comment STRIPE_SECRET_KEY if it contains live key');
+          throw new Error('Cannot use LIVE keys when STRIPE_MODE=sandbox. Configure STRIPE_SECRET_KEY_SANDBOX or use test key in STRIPE_SECRET_KEY.');
+        } else if (isTest || isSandboxKey) {
+          secretKey = regularKey;
+        }
+      }
+      
+      // If still no valid key found
+      if (!secretKey) {
+        throw new Error('No valid test or sandbox key found. When STRIPE_MODE=sandbox, configure STRIPE_SECRET_KEY_SANDBOX or set STRIPE_SECRET_KEY to a test key (sk_test_*).');
+      }
+    } else {
+      // Normal mode: use any available key
+      secretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY_SANDBOX;
     }
+    
+    if (!secretKey) {
+      throw new Error('STRIPE_SECRET_KEY or STRIPE_SECRET_KEY_SANDBOX environment variable is not set');
+    }
+    
+    // Detect mode from key prefix
+    const isSandboxKey = secretKey.startsWith('sb_');
+    const isTest = secretKey.startsWith('sk_test_');
+    const isLive = secretKey.startsWith('sk_live_');
+    
+    // Final determination: explicit mode takes precedence, then key format
+    const isSandbox = explicitSandbox || isSandboxKey;
+    
+    // SECURITY: Warn if using live keys in development (when not in sandbox mode)
+    if (isLive && process.env.NODE_ENV !== 'production' && !explicitSandbox) {
+      console.error('🚨 SECURITY WARNING: Using LIVE Stripe keys in development!');
+      console.error('🚨 This can create REAL charges!');
+      console.error('🚨 Please use TEST keys (sk_test_*), SANDBOX keys (sb_*), or set STRIPE_MODE=sandbox');
+      throw new Error('LIVE Stripe keys detected in non-production environment. Use test or sandbox keys instead, or set STRIPE_MODE=sandbox.');
+    }
+    
+    if (isSandbox) {
+      console.log('🔵 Using Stripe in SANDBOX mode');
+    } else if (!isSandbox && !isTest && !isLive) {
+      console.warn('Warning: Stripe key format not recognized. Expected sb_* (sandbox), sk_test_* (test), or sk_live_* (live)');
+    }
+    
     stripeInstance = new Stripe(secretKey, {
       apiVersion: '2025-10-29.clover',
       typescript: true,
@@ -25,8 +91,11 @@ export const stripe = new Proxy({} as Stripe, {
 });
 
 // Get the publishable key for client-side usage
+// Supports sandbox keys (sb_*) or regular keys (pk_test_* or pk_live_*)
 export const getStripePublishableKey = () => {
-  return process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!;
+  return process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY || 
+         process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY_SANDBOX ||
+         '';
 };
 
 // Stripe helper functions

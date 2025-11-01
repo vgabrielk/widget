@@ -64,3 +64,4 @@ COMMENT ON COLUMN public.messages.image_name IS 'Original filename of the upload
 SELECT 'Migration executada com sucesso! 🎉' as result;
 
 
+

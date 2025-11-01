@@ -153,3 +153,4 @@ Se ainda houver travamento após essas correções:
 Após essas correções, o widget deve funcionar perfeitamente sem travamentos, mesmo após o envio de múltiplas mensagens. Os logs ajudarão a identificar qualquer problema remanescente.
 
 
+

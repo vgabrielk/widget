@@ -203,3 +203,4 @@ WHERE tablename IN ('rooms', 'messages')
 ORDER BY tablename, cmd, policyname;
 
 
+

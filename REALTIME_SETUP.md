@@ -172,3 +172,4 @@ Se não tiver um arquivo de notificação, você pode:
 ⚠️ **IMPORTANTE**: Verifique se o Realtime está habilitado no Supabase!
 
 
+

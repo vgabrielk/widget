@@ -18,3 +18,4 @@ COMMENT ON POLICY "Anyone can view active widgets by public_key" ON public.widge
   'Allows anonymous access to active widgets for embedding. This is safe because only public_key and config data is exposed.';
 
 
+

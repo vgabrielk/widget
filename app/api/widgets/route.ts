@@ -54,6 +54,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check user entitlements to verify they can create widgets
+    const { getUserEntitlements } = await import('@/lib/stripe/entitlements');
+    const entitlements = await getUserEntitlements(user.id);
+
+    // Get current widget count
+    const { data: existingWidgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('user_id', user.id);
+
+    const widgetCount = existingWidgets?.length || 0;
+
+    // Free plan: allow only 1 widget
+    // Pro plan: unlimited widgets
+    if (entitlements.isFree && widgetCount >= 1) {
+      return NextResponse.json(
+        { 
+          error: 'Limite de widgets atingido',
+          message: 'O plano gratuito permite apenas 1 widget. Faça upgrade para criar mais widgets.',
+          requiresUpgrade: true
+        },
+        { status: 403 }
+      );
+    }
+
     // Parse request body
     const body = await request.json();
     const { name, brand_color, position, welcome_message } = body;

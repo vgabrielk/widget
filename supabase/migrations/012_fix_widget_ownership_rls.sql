@@ -59,3 +59,4 @@ COMMENT ON POLICY "Allow reading messages from valid rooms" ON public.messages I
 'Security: Users can only read messages from rooms belonging to their widgets. Visitors can read their own messages.';
 
 
+

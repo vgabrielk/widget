@@ -209,3 +209,4 @@ Comportamento pode variar:
 7. 🔮 Badge count na favicon
 
 
+

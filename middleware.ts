@@ -1,8 +1,28 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { checkEntitlements } from "@/lib/middleware/entitlements";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  // First, update Supabase session
+  const sessionResponse = await updateSession(request);
+  
+  // If session update returns a redirect, use it
+  if (sessionResponse && sessionResponse instanceof NextResponse) {
+    if (sessionResponse.status === 307 || sessionResponse.status === 308) {
+      return sessionResponse;
+    }
+  }
+
+  // Then, check entitlements
+  const entitlementsResponse = await checkEntitlements(request);
+  
+  // If entitlements check returns a redirect, use it
+  if (entitlementsResponse && entitlementsResponse instanceof NextResponse) {
+    return entitlementsResponse;
+  }
+
+  // Otherwise, return the session response or a pass-through
+  return sessionResponse || NextResponse.next();
 }
 
 export const config = {
