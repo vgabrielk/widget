@@ -103,6 +103,7 @@
                 position: fixed;
                 ${position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
                 bottom: 24px;
+                bottom: calc(24px + env(safe-area-inset-bottom));
                 width: 56px;
                 height: 56px;
                 border-radius: 50%;
@@ -127,10 +128,11 @@
                 position: fixed;
                 ${position === 'bottom-left' ? 'left: 24px;' : 'right: 24px;'}
                 bottom: 24px;
+                bottom: calc(24px + env(safe-area-inset-bottom));
                 width: 400px;
                 max-width: calc(100vw - 48px);
                 height: 600px;
-                max-height: calc(100vh - 48px);
+                max-height: calc(100vh - 48px - env(safe-area-inset-bottom) - env(safe-area-inset-top));
                 background: white;
                 border-radius: 16px;
                 box-shadow: 0 8px 32px rgba(0,0,0,0.12);
@@ -264,6 +266,7 @@
             /* Input Area */
             .chat-widget-input-area {
                 padding: 16px 20px;
+                padding-bottom: calc(16px + env(safe-area-inset-bottom));
                 border-top: 1px solid #F3F4F6;
                 background: white;
                 flex-shrink: 0;
@@ -607,21 +610,35 @@
 
     function applyMobileStyles() {
         const chatWindow = document.getElementById('chat-widget-window');
+        const inputArea = document.querySelector('.chat-widget-input-area');
+        const chatButton = document.getElementById('chat-widget-button');
         if (!chatWindow) return;
         
         if (isMobileScreen()) {
             // Apply fullscreen styles for mobile/tablet with !important
+            // Use safe-area-inset for iPhone notches and home indicator
             chatWindow.style.setProperty('left', '0', 'important');
             chatWindow.style.setProperty('right', '0', 'important');
             chatWindow.style.setProperty('top', '0', 'important');
-            chatWindow.style.setProperty('bottom', '0', 'important');
+            chatWindow.style.setProperty('bottom', 'env(safe-area-inset-bottom)', 'important');
             chatWindow.style.setProperty('width', '100vw', 'important');
-            chatWindow.style.setProperty('height', '100vh', 'important');
+            chatWindow.style.setProperty('height', 'calc(100vh - env(safe-area-inset-bottom))', 'important');
             chatWindow.style.setProperty('max-width', '100vw', 'important');
-            chatWindow.style.setProperty('max-height', '100vh', 'important');
+            chatWindow.style.setProperty('max-height', 'calc(100vh - env(safe-area-inset-bottom))', 'important');
             chatWindow.style.setProperty('border-radius', '0', 'important');
             chatWindow.style.setProperty('box-shadow', 'none', 'important');
             chatWindow.style.setProperty('margin', '0', 'important');
+            
+            // Ensure input area has proper safe area padding on mobile
+            // This prevents input from being hidden behind iPhone home indicator
+            if (inputArea) {
+                inputArea.style.setProperty('padding-bottom', 'calc(16px + env(safe-area-inset-bottom))', 'important');
+            }
+            
+            // Apply safe area to button on mobile
+            if (chatButton) {
+                chatButton.style.setProperty('bottom', 'calc(24px + env(safe-area-inset-bottom))', 'important');
+            }
         } else {
             // Reset to default desktop styles
             chatWindow.style.removeProperty('left');
@@ -635,6 +652,14 @@
             chatWindow.style.removeProperty('border-radius');
             chatWindow.style.removeProperty('box-shadow');
             chatWindow.style.removeProperty('margin');
+            
+            if (inputArea) {
+                inputArea.style.removeProperty('padding-bottom');
+            }
+            
+            if (chatButton) {
+                chatButton.style.removeProperty('bottom');
+            }
         }
     }
 
