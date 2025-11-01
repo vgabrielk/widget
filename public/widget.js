@@ -275,7 +275,7 @@
             /* Mobile-specific styles for iPhone Safari */
             @supports (-webkit-touch-callout: none) {
                 .chat-widget-input-area {
-                    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+                    padding-bottom: calc(80px + env(safe-area-inset-bottom));
                 }
             }
 
@@ -639,7 +639,7 @@
             // Ensure input area has proper safe area padding on mobile
             // This prevents input from being hidden behind iPhone home indicator and Safari URL bar
             if (inputArea) {
-                inputArea.style.setProperty('padding-bottom', 'calc(32px + env(safe-area-inset-bottom))', 'important');
+                inputArea.style.setProperty('padding-bottom', 'calc(80px + env(safe-area-inset-bottom))', 'important');
             }
             
             // Apply safe area to button on mobile
