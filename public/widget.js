@@ -1626,7 +1626,33 @@
         if (normalizedSenderAvatar) {
             message.sender_avatar = normalizedSenderAvatar;
         }
-        const senderAvatarUrl = getAvatarUrlCached(normalizedSenderAvatar || message.sender_avatar);
+
+        let senderAvatarUrl = null;
+        if (normalizedSenderAvatar || message.sender_avatar) {
+            senderAvatarUrl = getAvatarUrlCached(normalizedSenderAvatar || message.sender_avatar);
+        }
+
+        if (!senderAvatarUrl && !isVisitor) {
+            if (widgetData?.avatar_url) {
+                senderAvatarUrl = widgetData.avatar_url;
+            } else if (widgetData?.avatar_path) {
+                senderAvatarUrl = getAvatarUrlCached(widgetData.avatar_path);
+            }
+        }
+
+        if (!senderAvatarUrl && !isVisitor && widgetData?.avatar_path) {
+            try {
+                const assetBase = API_BASE || window.location.origin;
+                senderAvatarUrl = new URL(widgetData.avatar_path, assetBase).toString();
+            } catch {
+                // ignore - will fall back to default avatar below
+            }
+        }
+
+        if (!senderAvatarUrl && !isVisitor) {
+            senderAvatarUrl = defaultAvatarUrl;
+        }
+
         // Se tiver sender_avatar (imagem), mostrar a imagem
         if (senderAvatarUrl) {
             const avatarImg = document.createElement('img');
