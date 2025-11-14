@@ -46,8 +46,8 @@ export const getAvatarUrlCached = (rawPath?: string | null, options?: AvatarCach
     return local;
   }
 
-  const { data, error } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
-  if (error || !data?.publicUrl) {
+  const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+  if (!data?.publicUrl) {
     console.warn('Avatar not found at path:', path);
     return null;
   }
