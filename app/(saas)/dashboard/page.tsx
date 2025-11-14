@@ -18,10 +18,12 @@ import {
 } from 'lucide-react';
 import { requireUser } from '@/lib/auth/session';
 import { getUserWidgets } from '@/lib/data/widgets';
+import { createClient } from '@/lib/supabase/server';
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const widgets = await getUserWidgets(user.id);
+  const supabase = await createClient();
+  const widgets = await getUserWidgets(user.id, supabase);
 
   // Simplified plan detection - removed heavy Stripe API calls from SSR
   // Subscription info is fetched client-side when needed

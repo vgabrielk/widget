@@ -103,7 +103,7 @@ function MyComponent() {
   
   // Dados já estão disponíveis (com cache)
   console.log(profile.full_name);
-  console.log(profile.avatar_url);
+  console.log(profile.avatar_path);
   
   // Atualizar perfil
   await updateProfile({ full_name: 'João Silva' });
@@ -140,7 +140,7 @@ Page Load (Cache Hit):
 ### ✅ Seguro para Cache
 - `full_name` - Informação pública do usuário
 - `company_name` - Informação pública
-- `avatar_url` - URL pública (bucket público)
+- `avatar_path` - Caminho relativo no bucket `avatars`
 - `email` - Já disponível em `auth.user`
 
 ### ❌ NÃO Cacheado
@@ -198,7 +198,7 @@ supabase/
 4. Upload to storage
    - Path: {user-id}/avatar-{timestamp}.{ext}
    ↓
-5. Update profile.avatar_url in database
+5. Update profile.avatar_path in database
    ↓
 6. Invalidate cache + save new data
    ↓

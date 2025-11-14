@@ -1,13 +1,23 @@
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
 import { UserProvider } from '@/lib/contexts/user-context';
-import { getUserProfile, requireUser } from '@/lib/auth/session';
+import { getUserProfile } from '@/lib/auth/session';
 
 export default async function SaaSLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireUser();
-  const profile = await getUserProfile(user.id);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/auth/login');
+  }
+
+  const profile = await getUserProfile(user.id, supabase);
 
   return (
     <UserProvider initialUser={user} initialProfile={profile}>

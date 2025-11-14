@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { User } from '@supabase/supabase-js';
 import { UserProfile } from '@/lib/types/profile';
+import { normalizeAvatarPath } from '@/lib/utils/avatar';
+import { preloadAvatarUrl, clearAvatarCache } from '@/lib/utils/avatar-client';
 
 interface UserContextType {
   user: User | null;
@@ -41,6 +43,18 @@ export function UserProvider({
   const [error, setError] = useState<string | null>(null);
   const fetchingProfileRef = useRef(false);
 
+  const normalizeProfileData = useCallback((profileData: UserProfile | null): UserProfile | null => {
+    if (!profileData) return null;
+    const normalized: UserProfile = {
+      ...profileData,
+      avatar_path: normalizeAvatarPath(profileData.avatar_path),
+    };
+    if (normalized.avatar_path) {
+      preloadAvatarUrl(normalized.avatar_path);
+    }
+    return normalized;
+  }, []);
+
   // Load from cache
   const loadFromCache = useCallback((): UserProfile | null => {
     if (typeof window === 'undefined') return null;
@@ -57,42 +71,37 @@ export function UserProvider({
         return null;
       }
 
-      return cachedProfile;
+      return normalizeProfileData(cachedProfile);
     } catch (err) {
       console.error('Error loading cache:', err);
       return null;
     }
-  }, []);
+  }, [normalizeProfileData]);
 
   // Save to cache
   const saveToCache = useCallback((profileData: UserProfile) => {
     if (typeof window === 'undefined') return;
+    const normalized = normalizeProfileData(profileData);
+    if (!normalized) return;
     
     try {
       const cacheData: CachedProfile = {
-        profile: profileData,
+        profile: normalized,
         timestamp: Date.now(),
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
     } catch (err) {
       console.error('Error saving cache:', err);
     }
-  }, []);
+  }, [normalizeProfileData]);
 
   // Clear cache
   const clearCache = useCallback(() => {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(CACHE_KEY);
+    clearAvatarCache();
   }, []);
 
-  // Extract file path from signed URL (remove token to compare actual file)
-  const getAvatarFilePath = useCallback((avatarUrl: string | null): string | null => {
-    if (!avatarUrl) return null;
-    // Signed URLs have format: https://...?token=...
-    // Extract the part before ?token=
-    const urlParts = avatarUrl.split('?token=');
-    return urlParts[0] || avatarUrl;
-  }, []);
 
   // Fetch profile from database via API route
   const fetchProfile = useCallback(async (_userId: string, forceFresh = false): Promise<UserProfile | null> => {
@@ -134,24 +143,25 @@ export function UserProvider({
 
     try {
       const profileData = await fetchProfile(user.id, true);
-      if (profileData) {
+      const normalizedProfile = normalizeProfileData(profileData);
+      if (normalizedProfile) {
+
         // Compare with current profile to avoid unnecessary updates
-        const currentProfile = profile; // Capture at call time
-        const currentAvatarPath = getAvatarFilePath(currentProfile?.avatar_url || null);
-        const newAvatarPath = getAvatarFilePath(profileData.avatar_url);
+        const currentProfile = profile;
+        const currentAvatarPath = normalizeAvatarPath(currentProfile?.avatar_path || null);
+        const newAvatarPath = normalizedProfile.avatar_path;
         
         const profileChanged = 
           !currentProfile ||
-          currentProfile.full_name !== profileData.full_name ||
-          currentProfile.company_name !== profileData.company_name ||
+          currentProfile.full_name !== normalizedProfile.full_name ||
+          currentProfile.company_name !== normalizedProfile.company_name ||
           currentAvatarPath !== newAvatarPath;
         
         if (profileChanged) {
-          setProfile(profileData);
-          saveToCache(profileData);
-        } else {
-          // Only signed URL changed, update cache but not state
-          const updatedProfile = { ...currentProfile, avatar_url: profileData.avatar_url };
+          setProfile(normalizedProfile);
+          saveToCache(normalizedProfile);
+        } else if (currentProfile) {
+          const updatedProfile = { ...currentProfile, avatar_path: normalizedProfile.avatar_path };
           saveToCache(updatedProfile);
         }
       }
@@ -160,7 +170,7 @@ export function UserProvider({
     } finally {
       setLoading(false);
     }
-  }, [user, fetchProfile, saveToCache, getAvatarFilePath]); // Removed profile from deps
+  }, [user, fetchProfile, saveToCache, normalizeProfileData]); // Removed profile from deps
 
   // Update profile via API route - memoize to prevent recreation
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
@@ -182,30 +192,35 @@ export function UserProvider({
       }
 
       const data = await res.json();
-      const updatedProfile = data.profile as UserProfile;
+      const normalizedProfile = normalizeProfileData(data.profile as UserProfile);
       
       // Compare avatar file path to see if it actually changed
       setProfile((currentProfile) => {
+        if (!normalizedProfile) {
+          return currentProfile;
+        }
+
         if (!currentProfile) {
-          saveToCache(updatedProfile);
-          return updatedProfile;
+          saveToCache(normalizedProfile);
+          return normalizedProfile;
         }
         
-        const currentAvatarPath = getAvatarFilePath(currentProfile.avatar_url || null);
-        const newAvatarPath = getAvatarFilePath(updatedProfile.avatar_url);
+        const currentAvatarPath = normalizeAvatarPath(currentProfile.avatar_path || null);
+        const newAvatarPath = normalizedProfile.avatar_path;
         
         // Only update state if avatar file actually changed or other fields changed
         const shouldUpdate = 
-          currentProfile.full_name !== updatedProfile.full_name ||
-          currentProfile.company_name !== updatedProfile.company_name ||
+          currentProfile.full_name !== normalizedProfile.full_name ||
+          currentProfile.company_name !== normalizedProfile.company_name ||
           currentAvatarPath !== newAvatarPath;
         
         if (shouldUpdate) {
-          saveToCache(updatedProfile);
-          return updatedProfile;
+          saveToCache(normalizedProfile);
+          return normalizedProfile;
         } else {
           // Only token changed, update cache but not state
-          saveToCache({ ...currentProfile, avatar_url: updatedProfile.avatar_url });
+          const mergedProfile = { ...currentProfile, avatar_path: normalizedProfile.avatar_path };
+          saveToCache(mergedProfile);
           return currentProfile;
         }
       });
@@ -213,10 +228,10 @@ export function UserProvider({
       console.error('Error updating profile:', err);
       throw new Error(err.message || 'Failed to update profile');
     }
-  }, [user, saveToCache, getAvatarFilePath]); // Removed profile from deps
+  }, [user, saveToCache, normalizeProfileData]); // Removed profile from deps
 
   // Upload avatar via API route
-  const uploadAvatar = useCallback(async (file: File): Promise<string> => {
+  const uploadAvatar = useCallback(async (file: File): Promise<string | null> => {
     if (!user) throw new Error('No user logged in');
 
     try {
@@ -247,18 +262,24 @@ export function UserProvider({
       }
 
       const data = await res.json();
-      const avatarUrl = data.avatar_url as string;
-      const updatedProfile = data.profile as UserProfile;
+      const avatarPath = normalizeAvatarPath(data.avatar_path);
+      const normalizedProfile =
+        normalizeProfileData({
+          ...(data.profile as UserProfile),
+          avatar_path: data.profile?.avatar_path ?? avatarPath,
+        }) || null;
 
       // Always update on avatar upload (new file uploaded)
-      setProfile(updatedProfile);
-      saveToCache(updatedProfile);
+      if (normalizedProfile) {
+        setProfile(normalizedProfile);
+        saveToCache(normalizedProfile);
+      }
 
-      return avatarUrl;
+      return normalizedProfile?.avatar_path || null;
     } catch (err: any) {
       throw new Error(err.message || 'Failed to upload avatar');
     }
-  }, [user, saveToCache]); // Removed profile and getAvatarFilePath from deps
+  }, [user, saveToCache, normalizeProfileData]);
 
   // Sync session coming from the server
   useEffect(() => {
@@ -283,8 +304,11 @@ export function UserProvider({
     setError(null);
 
     if (initialProfile) {
-      setProfile(initialProfile);
-      saveToCache(initialProfile);
+      const normalized = normalizeProfileData(initialProfile);
+      if (normalized) {
+        setProfile(normalized);
+        saveToCache(normalized);
+      }
       setLoading(false);
       return;
     }
@@ -323,8 +347,11 @@ export function UserProvider({
 
         if (!isMounted || !profileData) return;
 
-        setProfile(profileData);
-        saveToCache(profileData);
+        const normalized = normalizeProfileData(profileData);
+        if (!normalized) return;
+
+        setProfile(normalized);
+        saveToCache(normalized);
       } catch (err: any) {
         if (!isMounted) return;
         setError(err.message || 'Failed to load profile');
@@ -339,7 +366,7 @@ export function UserProvider({
     return () => {
       isMounted = false;
     };
-  }, [initialUser, initialProfile, loadFromCache, saveToCache, fetchProfile]);
+  }, [initialUser, initialProfile, loadFromCache, saveToCache, fetchProfile, normalizeProfileData]);
 
   // Memoize the context value to prevent unnecessary re-renders of all consumers
   const value: UserContextType = useMemo(() => ({

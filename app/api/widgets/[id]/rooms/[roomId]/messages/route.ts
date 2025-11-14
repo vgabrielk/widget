@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { normalizeAvatarPath } from '@/lib/utils/avatar';
 import { NextResponse } from 'next/server';
 
 export async function GET(
@@ -71,7 +72,12 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ messages: messages || [] });
+    const normalizedMessages = (messages || []).map((message) => ({
+      ...message,
+      sender_avatar: normalizeAvatarPath(message.sender_avatar),
+    }));
+
+    return NextResponse.json({ messages: normalizedMessages });
   } catch (error: any) {
     console.error('Error in messages API:', error);
     return NextResponse.json(
@@ -115,6 +121,7 @@ export async function POST(
     // Parse request body
     const body = await request.json();
     const { content, sender_name, sender_avatar, message_type = 'text' } = body;
+    const normalizedAvatar = normalizeAvatarPath(sender_avatar);
 
     if (!content || !content.trim()) {
       return NextResponse.json(
@@ -162,7 +169,7 @@ export async function POST(
         sender_type: 'agent',
         sender_id: user.id,
         sender_name: sender_name || user.email?.split('@')[0] || 'Suporte',
-        sender_avatar: sender_avatar || null,
+        sender_avatar: normalizedAvatar,
         content: content.trim(),
         message_type,
       })

@@ -4,6 +4,7 @@ import * as React from "react"
 import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
+import { DEFAULT_AVATAR } from "@/lib/utils/avatar"
 
 function Avatar({
   className,
@@ -21,14 +22,44 @@ function Avatar({
   )
 }
 
+type AvatarImageProps = React.ComponentProps<typeof AvatarPrimitive.Image> & {
+  fallbackSrc?: string
+  avatarPath?: string | null
+}
+
 function AvatarImage({
   className,
+  fallbackSrc = DEFAULT_AVATAR,
+  avatarPath,
+  onError,
   ...props
-}: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+}: AvatarImageProps) {
+  const src = props.src
+
+  const handleError = React.useCallback(
+    (event: React.SyntheticEvent<HTMLImageElement>) => {
+      const target = event.currentTarget
+      if (target.dataset.fallbackApplied === "true") {
+        if (onError) onError(event)
+        return
+      }
+
+      target.dataset.fallbackApplied = "true"
+      target.src = fallbackSrc
+      console.warn("Avatar not found at path:", avatarPath || src || "[unknown]")
+
+      if (onError) {
+        onError(event)
+      }
+    },
+    [avatarPath, fallbackSrc, onError, src]
+  )
+
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
       className={cn("aspect-square size-full", className)}
+      onError={handleError}
       {...props}
     />
   )

@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
+import { AVATAR_BUCKET, normalizeAvatarPath } from '@/lib/utils/avatar';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 // POST /api/user/avatar - Upload user avatar
@@ -43,106 +45,102 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get current profile to check for existing avatar
-    const { data: currentProfile } = await supabase
-      .from('profiles')
-      .select('avatar_url')
-      .eq('id', user.id)
-      .maybeSingle();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // Delete old avatar if exists
-    if (currentProfile?.avatar_url) {
-      try {
-        // Extract path from URL if it's a full URL, or use as-is if it's already a path
-        let avatarPath = currentProfile.avatar_url;
-        
-        // If it's a full URL, extract just the path part
-        if (avatarPath.includes('/avatars/')) {
-          avatarPath = avatarPath.split('/avatars/')[1];
-        } else if (avatarPath.includes('avatars/')) {
-          avatarPath = avatarPath.split('avatars/')[1];
-        }
-        
-        // Remove old avatar (should be in format: user-id/avatar-xxx.ext)
-        await supabase.storage
-          .from('avatars')
-          .remove([avatarPath]);
-      } catch (err) {
-        console.warn('Failed to delete old avatar:', err);
-        // Continue even if deletion fails
-      }
+    if (!supabaseUrl || !serviceKey) {
+      throw new Error('Missing Supabase service configuration for avatar upload');
     }
 
-    // Generate unique filename in user folder (required by RLS policy)
-    // Structure: avatars/{user-id}/avatar-{timestamp}.{ext}
-    const fileExt = file.name.split('.').pop();
-    const fileName = `avatar-${Date.now()}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
+    const adminClient = createSupabaseAdminClient(supabaseUrl, serviceKey);
 
-    // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const fileBuffer = Buffer.from(arrayBuffer);
 
-    // Upload to storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, buffer, {
+    const extensionFromType = (() => {
+      switch (file.type) {
+        case 'image/jpeg':
+          return 'jpg';
+        case 'image/png':
+          return 'png';
+        case 'image/webp':
+          return 'webp';
+        case 'image/gif':
+          return 'gif';
+        default: {
+          const nameExt = file.name?.split('.').pop();
+          if (!nameExt) return 'png';
+          return nameExt.toLowerCase();
+        }
+      }
+    })();
+
+    const filePathRaw = `${user.id}/avatar-${Date.now()}.${extensionFromType}`;
+
+    const { error: uploadError } = await adminClient.storage
+      .from(AVATAR_BUCKET)
+      .upload(filePathRaw, fileBuffer, {
         contentType: file.type,
-        upsert: false,
+        upsert: true,
       });
 
     if (uploadError) {
-      console.error('Error uploading avatar:', uploadError);
+      console.error('Failed to upload avatar to storage:', uploadError);
       return NextResponse.json(
-        { error: uploadError.message || 'Failed to upload avatar' },
+        { error: uploadError.message || 'Failed to process avatar' },
         { status: 500 }
       );
     }
 
-    // Update profile with new avatar path (just the path, not full URL)
-    // The path is stored in format: user-id/avatar-xxx.ext
+    const filePath = normalizeAvatarPath(filePathRaw);
+    if (!filePath) {
+      return NextResponse.json(
+        { error: 'Invalid avatar path generated' },
+        { status: 500 }
+      );
+    }
+
+    // Get current profile to check for existing avatar
+    const { data: currentProfile } = await supabase
+      .from('profiles')
+      .select('avatar_path')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    // Remove previous avatar with service role if available
+    if (currentProfile?.avatar_path) {
+      try {
+        await adminClient.storage.from(AVATAR_BUCKET).remove([currentProfile.avatar_path]);
+      } catch (err) {
+        console.warn('Failed to delete old avatar via admin client:', err);
+      }
+    }
+
     const { data: profile, error: updateError } = await supabase
       .from('profiles')
-      .update({ avatar_url: filePath })
+      .update({ avatar_path: filePath })
       .eq('id', user.id)
       .select()
       .single();
 
     if (updateError) {
+      try {
+        await adminClient.storage.from(AVATAR_BUCKET).remove([filePath]);
+      } catch (err) {
+        console.warn('Failed to cleanup uploaded avatar after error:', err);
+      }
       console.error('Error updating profile with avatar:', updateError);
-      // Try to clean up uploaded file
-      await supabase.storage.from('avatars').remove([filePath]);
       return NextResponse.json(
         { error: updateError.message || 'Failed to update profile' },
         { status: 500 }
       );
     }
 
-    // Get public URL for response
-    const { data: publicUrlData } = supabase.storage
-      .from('avatars')
-      .getPublicUrl(filePath);
-
-    // Generate signed URL for response (or use public URL if bucket is public)
-    let avatarUrl = publicUrlData.publicUrl;
-    try {
-      const { data: signedUrlData } = await supabase.storage
-        .from('avatars')
-        .createSignedUrl(filePath, 3600); // 1 hour expiry
-
-      if (signedUrlData?.signedUrl) {
-        avatarUrl = signedUrlData.signedUrl;
-      }
-    } catch (storageError) {
-      console.warn('Error generating signed URL for avatar:', storageError);
-      // Continue with public URL (bucket is public anyway)
-    }
-
     return NextResponse.json({
-      avatar_url: avatarUrl,
+      avatar_path: filePath,
       profile: {
         ...profile,
-        avatar_url: avatarUrl,
+        avatar_path: filePath,
       },
     });
   } catch (error: any) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { useUser } from '@/lib/contexts/user-context';
@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { getAvatarUrlCached } from '@/lib/utils/avatar-client';
 import { 
   User, 
   Mail, 
@@ -53,6 +54,8 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const avatarSrc = useMemo(() => getAvatarUrlCached(profile?.avatar_path || null), [profile?.avatar_path]);
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -193,10 +196,11 @@ export default function SettingsPage() {
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
                 <div className="relative group">
                   <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
-                    {profile?.avatar_url ? (
+                    {avatarSrc ? (
                       <AvatarImage 
-                        key={profile.avatar_url} 
-                        src={profile.avatar_url} 
+                        key={profile?.avatar_path || 'avatar'}
+                        src={avatarSrc} 
+                        avatarPath={profile?.avatar_path || null}
                         alt={fullName || user?.email || ''} 
                       />
                     ) : (

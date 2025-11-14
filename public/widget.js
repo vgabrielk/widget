@@ -32,6 +32,13 @@
 
     console.log('ChatWidget: API_BASE =', API_BASE);
     
+    try {
+        const assetBase = API_BASE || window.location.origin;
+        defaultAvatarUrl = new URL(DEFAULT_AVATAR_PATH, assetBase).toString();
+    } catch {
+        defaultAvatarUrl = DEFAULT_AVATAR_PATH;
+    }
+    
     const SUPABASE_URL = window.SUPABASE_URL;
     const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
 
@@ -49,6 +56,80 @@
     let hasActiveRoom = false;
     let selectedImage = null;
     let heartbeatInterval = null;
+    
+    const DEFAULT_AVATAR_PATH = '/default-avatar.png';
+    let defaultAvatarUrl = DEFAULT_AVATAR_PATH;
+    const AVATAR_CACHE_PREFIX = 'chat-widget-avatar-cache-';
+    const avatarMemoryCache = {};
+
+    function normalizeAvatarPath(value) {
+        if (!value) return null;
+        let path = value.trim();
+        if (!path) return null;
+        path = path.split('?')[0]?.split('#')[0] || path;
+        if (path.startsWith('http')) {
+            const parts = path.split('/storage/v1/object/public/avatars/');
+            if (parts.length > 1) {
+                path = parts[1];
+            }
+        }
+        if (path.startsWith('/avatars/')) path = path.slice(9);
+        if (path.startsWith('avatars/')) path = path.slice(8);
+        if (path.startsWith('/')) path = path.slice(1);
+        return path || null;
+    }
+
+    function getAvatarCacheKey(path) {
+        return `${AVATAR_CACHE_PREFIX}${path}`;
+    }
+
+    function getAvatarUrlCached(path) {
+        const normalized = normalizeAvatarPath(path);
+        if (!normalized) return null;
+
+        if (avatarMemoryCache[normalized]) {
+            return avatarMemoryCache[normalized];
+        }
+
+        try {
+            const cached = localStorage.getItem(getAvatarCacheKey(normalized));
+            if (cached) {
+                avatarMemoryCache[normalized] = cached;
+                return cached;
+            }
+        } catch (error) {
+            console.warn('ChatWidget: Failed to read avatar cache', error);
+        }
+
+        if (!supabaseClient) return null;
+
+        const { data, error } = supabaseClient.storage
+            .from('avatars')
+            .getPublicUrl(normalized);
+
+        if (error || !data?.publicUrl) {
+            console.warn('Avatar not found at path:', normalized);
+            return null;
+        }
+
+        avatarMemoryCache[normalized] = data.publicUrl;
+        try {
+            localStorage.setItem(getAvatarCacheKey(normalized), data.publicUrl);
+        } catch (error) {
+            console.warn('ChatWidget: Failed to persist avatar cache', error);
+        }
+        return data.publicUrl;
+    }
+
+    function attachAvatarFallback(img, avatarPath) {
+        if (!img) return;
+        img.addEventListener('error', () => {
+            if (img.dataset.fallbackApplied === 'true') return;
+            img.dataset.fallbackApplied = 'true';
+            console.warn('Avatar not found at path:', avatarPath || img.src);
+            img.src = defaultAvatarUrl;
+        });
+    }
     
     const ICON_PATHS = {
         MessageSquare: [
@@ -736,6 +817,17 @@
             supabaseConfig.url,
             supabaseConfig.key || supabaseConfig.anonKey
         );
+
+        if (widgetData.avatar_path || widgetData.avatar_url) {
+            const normalizedAvatarPath = normalizeAvatarPath(widgetData.avatar_path || widgetData.avatar_url);
+            widgetData.avatar_path = normalizedAvatarPath;
+            if (normalizedAvatarPath) {
+                const cachedUrl = getAvatarUrlCached(normalizedAvatarPath);
+                if (cachedUrl) {
+                    widgetData.avatar_url = cachedUrl;
+                }
+            }
+        }
 
         // Verificar e limpar dados expirados (LGPD compliance - 24 horas)
         const submittedAt = localStorage.getItem(STORAGE_KEYS.SUBMITTED_AT);
@@ -1529,15 +1621,21 @@
         const avatar = document.createElement('div');
         avatar.className = `chat-message-avatar ${isVisitor ? 'visitor' : 'agent'}`;
         
+        const normalizedSenderAvatar = normalizeAvatarPath(message.sender_avatar);
+        if (normalizedSenderAvatar) {
+            message.sender_avatar = normalizedSenderAvatar;
+        }
+        const senderAvatarUrl = getAvatarUrlCached(normalizedSenderAvatar || message.sender_avatar);
         // Se tiver sender_avatar (imagem), mostrar a imagem
-        if (message.sender_avatar) {
+        if (senderAvatarUrl) {
             const avatarImg = document.createElement('img');
-            avatarImg.src = message.sender_avatar;
+            avatarImg.src = senderAvatarUrl;
             avatarImg.alt = message.sender_name || 'Avatar';
             avatarImg.style.width = '100%';
             avatarImg.style.height = '100%';
             avatarImg.style.objectFit = 'cover';
             avatarImg.style.borderRadius = '2px';
+            attachAvatarFallback(avatarImg, normalizedSenderAvatar);
             avatar.appendChild(avatarImg);
         } else {
             // Fallback para inicial do nome - sempre mostrar pelo menos uma letra
@@ -1758,6 +1856,9 @@
 
         document.body.appendChild(container);
         console.log('ChatWidget: UI created and added to DOM');
+        
+        const headerAvatarImg = container.querySelector('.chat-widget-header-avatar');
+        attachAvatarFallback(headerAvatarImg, widgetData.avatar_path);
         
         // Apply mobile styles after DOM creation (use requestAnimationFrame to ensure DOM is ready)
         requestAnimationFrame(() => {

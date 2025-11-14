@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
+import { AVATAR_BUCKET, normalizeAvatarPath } from '@/lib/utils/avatar';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 export async function DELETE() {
@@ -18,23 +20,28 @@ export async function DELETE() {
       );
     }
 
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceKey) {
+      throw new Error('Missing Supabase admin environment variables');
+    }
+
+    const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, serviceKey);
+
     // Delete user's avatar from storage if exists
     const { data: profile } = await supabase
       .from('profiles')
-      .select('avatar_url')
+      .select('avatar_path')
       .eq('id', user.id)
       .single();
 
-    if (profile?.avatar_url) {
+    if (profile?.avatar_path) {
       try {
-        // Extract path from full URL if needed
-        const avatarPath = profile.avatar_url.includes('/avatars/')
-          ? profile.avatar_url.split('/avatars/')[1]
-          : profile.avatar_url;
-        
-        await supabase.storage
-          .from('avatars')
-          .remove([avatarPath]);
+        const avatarPath = normalizeAvatarPath(profile.avatar_path);
+        if (avatarPath) {
+          await supabaseAdmin.storage.from(AVATAR_BUCKET).remove([avatarPath]);
+        }
       } catch (err) {
         console.error('Failed to delete avatar:', err);
       }
@@ -59,12 +66,7 @@ export async function DELETE() {
       .eq('id', user.id);
 
     // Delete user from auth (this is the final step)
-    // Note: This requires admin privileges, so we'll use the service role
-    const supabaseAdmin = await createClient();
-    
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
-      user.id
-    );
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
 
     if (deleteError) {
       console.error('Failed to delete user from auth:', deleteError);

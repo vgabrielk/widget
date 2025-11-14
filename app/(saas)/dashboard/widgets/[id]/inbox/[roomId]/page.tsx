@@ -28,6 +28,7 @@ import { useInboxStore } from '@/stores/useInboxStore';
 import { useAlertDialog } from '@/hooks/use-alert-dialog';
 import { useToast } from '@/components/ui/toast';
 import Link from 'next/link';
+import { getAvatarUrlCached } from '@/lib/utils/avatar-client';
 
 function MessageSkeleton({ isAgent }: { isAgent: boolean }) {
   return (
@@ -60,17 +61,10 @@ export default function RoomDetailPage() {
   // Use refs to avoid causing re-renders when profile changes
   const profileAvatarRef = useRef<string | null>(null);
   
-  // Memoize profile values to avoid re-renders - only update ref when avatar file path actually changes
-  const avatarPathBase = useMemo(() => {
-    return profile?.avatar_url?.split('?token=')[0] || null;
-  }, [profile?.avatar_url?.split('?token=')[0]]);
-  
-  // Update avatar ref only when the actual file path changes (not just the token)
   useEffect(() => {
-    if (avatarPathBase && profile?.avatar_url) {
-      profileAvatarRef.current = profile.avatar_url;
-    }
-  }, [avatarPathBase, profile?.avatar_url]);
+    profileAvatarRef.current = profile?.avatar_path || null;
+  }, [profile?.avatar_path]);
+  
   
   const { messages, setMessages, addMessage, clearMessages } = useInboxStore();
   const { confirm, AlertDialogComponent } = useAlertDialog();
@@ -668,17 +662,10 @@ export default function RoomDetailPage() {
   // Must be defined before any conditional returns
   const userEmail = useMemo(() => user?.email || '', [user?.email]);
   
-  // Memoize avatar URL by file path (without token) to prevent re-renders when only token changes
-  const avatarUrl = useMemo(() => {
-    if (!profile?.avatar_url) return null;
-    return profile.avatar_url;
-  }, [profile?.avatar_url?.split('?token=')[0]]);
-
   if (isWidgetLoading || isRoomLoading) {
     return (
       <DashboardLayout
         email={userEmail}
-        avatarUrl={avatarUrl}
         title={widget?.name || 'Widget'}
         description="Carregando..."
       >
@@ -693,7 +680,6 @@ export default function RoomDetailPage() {
     return (
       <DashboardLayout
         email={userEmail}
-        avatarUrl={avatarUrl}
         title="Erro"
         description="Erro ao carregar"
       >
@@ -716,7 +702,6 @@ export default function RoomDetailPage() {
   return (
     <DashboardLayout
       email={userEmail}
-      avatarUrl={avatarUrl}
       title={widget?.name || 'Widget'}
       description="Gerencie suas conversas em tempo real"
     >
@@ -869,14 +854,20 @@ export default function RoomDetailPage() {
                         );
                       }
                       
+                      const senderAvatarSrc = getAvatarUrlCached(message.sender_avatar);
+
                       return (
                         <div
                           key={message.id}
                           className={`flex gap-2 sm:gap-3 ${isAgent ? 'flex-row-reverse' : ''}`}
                         >
                           <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                            {message.sender_avatar && (
-                              <AvatarImage src={message.sender_avatar} alt={message.sender_name || 'User'} />
+                            {senderAvatarSrc && (
+                              <AvatarImage
+                                src={senderAvatarSrc}
+                                avatarPath={message.sender_avatar}
+                                alt={message.sender_name || 'User'}
+                              />
                             )}
                             <AvatarFallback className={`${isAgent ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-xs`}>
                               {getInitials(message.sender_name)}

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { normalizeAvatarPath } from '@/lib/utils/avatar';
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET /api/user/profile - Get user profile
@@ -35,24 +36,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ profile: null });
     }
 
-    // If profile has avatar_url, generate signed URL with longer expiry
-    // Use longer expiry (24 hours) to reduce URL regeneration and image reloads
-    if (profile.avatar_url) {
-      try {
-        const { data: signedUrlData } = await supabase.storage
-          .from('avatars')
-          .createSignedUrl(profile.avatar_url, 86400); // 24 hours expiry
+    const normalizedProfile = profile
+      ? { ...profile, avatar_path: normalizeAvatarPath(profile.avatar_path) }
+      : null;
 
-        if (signedUrlData?.signedUrl) {
-          profile.avatar_url = signedUrlData.signedUrl;
-        }
-      } catch (storageError) {
-        console.warn('Error generating signed URL for avatar:', storageError);
-        // Continue without signed URL
-      }
-    }
-
-    return NextResponse.json({ profile });
+    return NextResponse.json({ profile: normalizedProfile });
   } catch (error: any) {
     console.error('Error in profile API:', error);
     return NextResponse.json(
@@ -80,12 +68,14 @@ export async function PATCH(request: NextRequest) {
     const updates = await request.json();
 
     // Validate updates (only allow certain fields)
-    const allowedFields = ['full_name', 'company_name', 'avatar_url'];
+    const allowedFields = ['full_name', 'company_name', 'avatar_path'];
     const filteredUpdates: Record<string, any> = {};
     
     for (const field of allowedFields) {
       if (field in updates) {
-        filteredUpdates[field] = updates[field];
+        filteredUpdates[field] = field === 'avatar_path'
+          ? normalizeAvatarPath(updates[field])
+          : updates[field];
       }
     }
 
@@ -138,25 +128,11 @@ export async function PATCH(request: NextRequest) {
 
       profile = data;
     }
+    const normalizedProfile = profile
+      ? { ...profile, avatar_path: normalizeAvatarPath(profile.avatar_path) }
+      : null;
 
-    // If profile has avatar_url, generate signed URL with longer expiry
-    // Use longer expiry (24 hours) to reduce URL regeneration and image reloads
-    if (profile.avatar_url) {
-      try {
-        const { data: signedUrlData } = await supabase.storage
-          .from('avatars')
-          .createSignedUrl(profile.avatar_url, 86400); // 24 hours expiry
-
-        if (signedUrlData?.signedUrl) {
-          profile.avatar_url = signedUrlData.signedUrl;
-        }
-      } catch (storageError) {
-        console.warn('Error generating signed URL for avatar:', storageError);
-        // Continue without signed URL
-      }
-    }
-
-    return NextResponse.json({ profile });
+    return NextResponse.json({ profile: normalizedProfile });
   } catch (error: any) {
     console.error('Error in profile API:', error);
     return NextResponse.json(

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { getAvatarUrlCached } from '@/lib/utils/avatar-client';
 import { 
   Send, 
   Search, 
@@ -806,7 +807,7 @@ export default function InboxPage() {
         body: JSON.stringify({
           content: messageContent,
           sender_name: profile?.full_name || 'Suporte',
-          sender_avatar: profile?.avatar_url || null,
+          sender_avatar: profile?.avatar_path || null,
           message_type: 'text',
         }),
       });
@@ -1738,36 +1739,41 @@ export default function InboxPage() {
                   </>
                 ) : (
                   <>
-                    {messages.map((message, index) => {
-                  const isAgent = message.sender_type === 'agent';
-                  const isSystem = message.message_type === 'system';
-                  
-                  if (isSystem) {
-                    return (
-                      <div 
-                        key={message.id}
-                        className="flex justify-center"
-                      >
-                        <div className="bg-muted text-muted-foreground px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm max-w-md text-center">
-                          {message.content}
-                        </div>
-                      </div>
-                    );
-                  }
-                  
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex gap-2 sm:gap-3 ${isAgent ? 'flex-row-reverse' : ''}`}
-                    >
-                      <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                        {message.sender_avatar && (
-                          <AvatarImage src={message.sender_avatar} alt={message.sender_name || 'User'} />
-                        )}
-                        <AvatarFallback className={`${isAgent ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-xs`}>
-                          {getInitials(message.sender_name)}
-                        </AvatarFallback>
-                      </Avatar>
+                    {messages.map((message) => {
+                      const isAgent = message.sender_type === 'agent';
+                      const isSystem = message.message_type === 'system';
+                      const senderAvatarSrc = getAvatarUrlCached(message.sender_avatar);
+                      
+                      if (isSystem) {
+                        return (
+                          <div 
+                            key={message.id}
+                            className="flex justify-center"
+                          >
+                            <div className="bg-muted text-muted-foreground px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm max-w-md text-center">
+                              {message.content}
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div
+                          key={message.id}
+                          className={`flex gap-2 sm:gap-3 ${isAgent ? 'flex-row-reverse' : ''}`}
+                        >
+                          <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                            {senderAvatarSrc && (
+                              <AvatarImage
+                                src={senderAvatarSrc}
+                                avatarPath={message.sender_avatar}
+                                alt={message.sender_name || 'User'}
+                              />
+                            )}
+                            <AvatarFallback className={`${isAgent ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-xs`}>
+                              {getInitials(message.sender_name)}
+                            </AvatarFallback>
+                          </Avatar>
                       
                       <div className={`flex flex-col ${isAgent ? 'items-end' : 'items-start'} max-w-[75%] sm:max-w-[70%]`}>
                         <div

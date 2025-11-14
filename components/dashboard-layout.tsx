@@ -15,7 +15,6 @@ import { Sheet, SheetContent, SheetTitle } from './ui/sheet';
 interface DashboardLayoutProps {
   children: React.ReactNode;
   email?: string;
-  avatarUrl?: string | null;
   title?: string;
   description?: string;
 }
@@ -23,14 +22,13 @@ interface DashboardLayoutProps {
 export function DashboardLayout({
   children,
   email,
-  avatarUrl,
   title,
   description,
 }: DashboardLayoutProps) {
   const router = useRouter();
   const supabase = createClient();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user } = useUser();
+  const { user, profile } = useUser();
   const userId = user?.id ?? null;
 
   const handleLogout = useCallback(async () => {
@@ -49,7 +47,7 @@ export function DashboardLayout({
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block w-64 flex-shrink-0" style={{ width: '256px', minWidth: '256px', maxWidth: '256px' }}>
-        <DashboardSidebar email={memoizedEmail} avatarUrl={avatarUrl} onLogout={handleLogout} />
+        <DashboardSidebar email={memoizedEmail} avatarPath={profile?.avatar_path || null} onLogout={handleLogout} />
       </div>
 
       {/* Mobile Menu */}
@@ -58,7 +56,7 @@ export function DashboardLayout({
           <SheetTitle className="sr-only">Menu de Navegação</SheetTitle>
           <DashboardSidebar 
             email={memoizedEmail} 
-            avatarUrl={avatarUrl}
+            avatarPath={profile?.avatar_path || null}
             onLogout={handleLogout} 
             onNavigate={handleNavigate}
           />

@@ -1,28 +1,27 @@
-import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import type { UserProfile } from '@/lib/types/profile';
 
-const getServerClient = cache(async () => {
-  return createClient();
-});
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-const getUserFromSession = cache(async (): Promise<User | null> => {
-  const supabase = await getServerClient();
+async function getUserFromSession(): Promise<User | null> {
+  const supabase = await createClient();
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
 
   if (error) {
-    console.error('[auth] Failed to load user from session', error);
+    if (error.name !== 'AuthSessionMissingError') {
+      console.error('[auth] Failed to load user from session', error);
+    }
     return null;
   }
 
   return user ?? null;
-});
+}
 
 export async function getSessionUser() {
   return getUserFromSession();
@@ -36,8 +35,10 @@ export async function requireUser() {
   return user;
 }
 
-const fetchProfile = async (userId: string): Promise<UserProfile | null> => {
-  const supabase = await getServerClient();
+const fetchProfile = async (
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<UserProfile | null> => {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -52,10 +53,10 @@ const fetchProfile = async (userId: string): Promise<UserProfile | null> => {
   return (data as UserProfile) || null;
 };
 
-export function getUserProfile(userId: string) {
+export function getUserProfile(userId: string, supabase: SupabaseServerClient) {
   return unstable_cache(
     async () => {
-      return fetchProfile(userId);
+      return fetchProfile(userId, supabase);
     },
     ['user-profile', userId],
     {
@@ -66,8 +67,16 @@ export function getUserProfile(userId: string) {
 }
 
 export async function getUserWithProfile() {
-  const user = await requireUser();
-  const profile = await getUserProfile(user.id);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/auth/login');
+  }
+
+  const profile = await getUserProfile(user.id, supabase);
 
   return {
     user,

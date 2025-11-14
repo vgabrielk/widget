@@ -1,3 +1,4 @@
+import { AVATAR_BUCKET, normalizeAvatarPath } from '@/lib/utils/avatar';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -116,22 +117,23 @@ export async function GET(
 
     // Get user profile avatar if user_id exists
     let avatarUrl = null;
+    let avatarPath = null;
     if (widget.user_id) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('avatar_url')
+        .select('avatar_path')
         .eq('id', widget.user_id)
         .single();
       
-      if (profile?.avatar_url) {
-        // Convert avatar path to public URL
-        // avatar_url is stored as: user-id/avatar-xxx.ext
-        // Need to create public URL: {supabaseUrl}/storage/v1/object/public/avatars/{path}
-        try {
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-          avatarUrl = `${supabaseUrl}/storage/v1/object/public/avatars/${profile.avatar_url}`;
-        } catch (err) {
-          console.warn('Error generating avatar URL:', err);
+      if (profile?.avatar_path) {
+        avatarPath = normalizeAvatarPath(profile.avatar_path);
+        if (avatarPath) {
+          try {
+            const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(avatarPath);
+            avatarUrl = data?.publicUrl || null;
+          } catch (err) {
+            console.warn('Error generating avatar URL:', err);
+          }
         }
       }
     }
@@ -169,6 +171,7 @@ export async function GET(
       widget: {
         ...widget,
         avatar_url: avatarUrl,
+        avatar_path: avatarPath,
       },
       supabase: {
         url: process.env.NEXT_PUBLIC_SUPABASE_URL,

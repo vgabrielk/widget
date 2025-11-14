@@ -1,11 +1,13 @@
 'use client';
 
+import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { getAvatarUrlCached } from '@/lib/utils/avatar-client';
 
 interface SidebarLogoProps {
   email?: string;
-  avatarUrl?: string | null;
+  avatarPath?: string | null;
   className?: string;
   size?: number;
 }
@@ -23,24 +25,24 @@ function getInitials(email?: string): string {
 
 /**
  * SidebarLogo - Avatar component for the sidebar
- * Accepts avatarUrl as prop to avoid dependency on user context
+ * Accepts avatarPath as prop to avoid dependency on user context
  * Shows avatar image when available, otherwise shows initials
  */
-export function SidebarLogo({ email, avatarUrl, className, size = 40 }: SidebarLogoProps) {
+export function SidebarLogo({ email, avatarPath, className, size = 40 }: SidebarLogoProps) {
   const initials = getInitials(email);
   
-  // Extract file path from signed URL for key (without token) to prevent re-renders when only token changes
-  const avatarPathBase = avatarUrl?.split('?token=')[0] || null;
+  const avatarSrc = useMemo(() => getAvatarUrlCached(avatarPath || null), [avatarPath]);
   
   return (
     <Avatar 
       className={cn('shadow-sm flex-shrink-0', className)} 
       style={{ width: `${size}px`, height: `${size}px` }}
     >
-      {avatarUrl && avatarPathBase && (
+      {avatarSrc && (
         <AvatarImage 
-          key={avatarPathBase}
-          src={avatarUrl} 
+          key={avatarPath || 'sidebar-avatar'}
+          src={avatarSrc} 
+          avatarPath={avatarPath || null}
           alt={email || 'User'} 
         />
       )}

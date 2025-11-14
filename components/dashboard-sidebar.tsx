@@ -24,7 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 interface SidebarProps {
   email?: string;
-  avatarUrl?: string | null;
+  avatarPath?: string | null;
   onLogout?: () => void;
   onNavigate?: () => void;
 }
@@ -81,7 +81,7 @@ const settingsNavItems: NavItem[] = [
   },
 ];
 
-const DashboardSidebarComponent = ({ email, avatarUrl, onLogout, onNavigate }: SidebarProps) => {
+const DashboardSidebarComponent = ({ email, avatarPath, onLogout, onNavigate }: SidebarProps) => {
   const pathname = usePathname();
 
   const isActive = (href: string) => {
@@ -170,7 +170,7 @@ const DashboardSidebarComponent = ({ email, avatarUrl, onLogout, onNavigate }: S
           </div>
         ) : (
           <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-muted/50 transition-colors">
-            <SidebarLogo email={email} avatarUrl={avatarUrl} size={40} />
+            <SidebarLogo email={email} avatarPath={avatarPath} size={40} />
             <div className="flex-1 overflow-hidden min-w-0" style={{ maxWidth: 'calc(100% - 52px)' }}>
               <p className="text-sm font-medium truncate block">
                 {email?.split('@')[0] || 'User'}
@@ -198,14 +198,10 @@ const DashboardSidebarComponent = ({ email, avatarUrl, onLogout, onNavigate }: S
 };
 
 // Memoize component to prevent re-renders when parent re-renders
-// Only re-render if email, avatarUrl, or callback references actually change
+// Only re-render if email, avatarPath, or callback references actually change
 export const DashboardSidebar = memo(DashboardSidebarComponent, (prevProps, nextProps) => {
-  // Compare avatar URL by file path (without token) to avoid re-renders when only token changes
-  const prevAvatarPath = prevProps.avatarUrl?.split('?token=')[0] || null;
-  const nextAvatarPath = nextProps.avatarUrl?.split('?token=')[0] || null;
-  
   return prevProps.email === nextProps.email &&
-         prevAvatarPath === nextAvatarPath &&
+         prevProps.avatarPath === nextProps.avatarPath &&
          prevProps.onLogout === nextProps.onLogout &&
          prevProps.onNavigate === nextProps.onNavigate;
 });

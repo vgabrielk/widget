@@ -96,12 +96,6 @@ export default async function WidgetsPage() {
                 <div className="relative flex h-full flex-col space-y-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-4">
-                      <div
-                        className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 text-white shadow-inner"
-                        style={{ backgroundColor: widget.brand_color, borderColor: widget.brand_color }}
-                      >
-                        <MessageSquare className="h-6 w-6" />
-                      </div>
                       <div>
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Widget</p>
                         <CardTitle className="text-xl font-semibold leading-tight">

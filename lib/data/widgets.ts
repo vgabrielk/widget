@@ -2,8 +2,12 @@ import { unstable_cache } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import type { Widget } from '@/lib/types/saas';
 
-const fetchWidgets = async (userId: string): Promise<Widget[]> => {
-  const supabase = await createClient();
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+const fetchWidgets = async (
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<Widget[]> => {
   const { data, error } = await supabase
     .from('widgets')
     .select('*')
@@ -18,9 +22,9 @@ const fetchWidgets = async (userId: string): Promise<Widget[]> => {
   return (data as Widget[]) || [];
 };
 
-export function getUserWidgets(userId: string) {
+export function getUserWidgets(userId: string, supabase: SupabaseServerClient) {
   return unstable_cache(
-    () => fetchWidgets(userId),
+    () => fetchWidgets(userId, supabase),
     ['widgets', userId],
     {
       revalidate: 30,

@@ -6,7 +6,7 @@ export interface Profile {
   id: string;
   email: string;
   company_name: string | null;
-  avatar_url: string | null;
+  avatar_path: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,7 +38,7 @@ export interface Widget {
   position: 'bottom-right' | 'bottom-left';
   welcome_message: string;
   company_name: string | null;
-  avatar_url: string | null;
+  avatar_path: string | null;
   icon_name?: string;
   
   // Settings
