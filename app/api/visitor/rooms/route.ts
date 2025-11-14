@@ -146,6 +146,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Send welcome message if widget has one configured
+    try {
+      const { data: widget, error: widgetError } = await supabase
+        .from('widgets')
+        .select('name, company_name, welcome_message, avatar_path, user_id')
+        .eq('id', widget_id)
+        .single();
+
+      if (!widgetError) {
+        const welcomeContent = widget?.welcome_message?.trim();
+        if (welcomeContent) {
+          const senderName =
+            widget.company_name?.trim() ||
+            widget.name?.trim() ||
+            'Equipe de Suporte';
+
+          const { error: welcomeError } = await supabase.from('messages').insert({
+            room_id: newRoom.id,
+            sender_type: 'bot',
+            sender_id: widget.user_id,
+            sender_name: senderName,
+            sender_avatar: widget.avatar_path,
+            content: welcomeContent,
+            message_type: 'text',
+          });
+
+          if (welcomeError) {
+            console.error('[Visitor Rooms API] Failed to insert welcome message:', welcomeError);
+          } else {
+            const now = new Date().toISOString();
+            const { error: roomUpdateError } = await supabase
+              .from('rooms')
+              .update({
+                last_activity: now,
+                last_message_at: now,
+                last_message_preview: welcomeContent.substring(0, 100),
+              })
+              .eq('id', newRoom.id);
+
+            if (roomUpdateError) {
+              console.error('[Visitor Rooms API] Failed to update room after welcome message:', roomUpdateError);
+            }
+          }
+        }
+      } else {
+        console.error('[Visitor Rooms API] Failed to load widget for welcome message:', widgetError);
+      }
+    } catch (welcomeHandlerError) {
+      console.error('[Visitor Rooms API] Unexpected error sending welcome message:', welcomeHandlerError);
+    }
+
     return NextResponse.json(
       { room: newRoom },
       { status: 201, headers: corsHeaders }

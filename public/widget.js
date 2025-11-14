@@ -30,6 +30,9 @@
         }
     }
 
+    const DEFAULT_AVATAR_PATH = '/default-avatar.png';
+    let defaultAvatarUrl = DEFAULT_AVATAR_PATH;
+
     console.log('ChatWidget: API_BASE =', API_BASE);
     
     try {
@@ -57,8 +60,6 @@
     let selectedImage = null;
     let heartbeatInterval = null;
     
-    const DEFAULT_AVATAR_PATH = '/default-avatar.png';
-    let defaultAvatarUrl = DEFAULT_AVATAR_PATH;
     const AVATAR_CACHE_PREFIX = 'chat-widget-avatar-cache-';
     const avatarMemoryCache = {};
 
