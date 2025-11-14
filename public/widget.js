@@ -122,9 +122,14 @@
         return data.publicUrl;
     }
 
-    function attachAvatarFallback(img, avatarPath) {
+    function attachAvatarFallback(img, avatarPath, fallbackUrl) {
         if (!img) return;
         img.addEventListener('error', () => {
+            if (fallbackUrl && img.dataset.headerFallbackApplied !== 'true') {
+                img.dataset.headerFallbackApplied = 'true';
+                img.src = fallbackUrl;
+                return;
+            }
             if (img.dataset.fallbackApplied === 'true') return;
             img.dataset.fallbackApplied = 'true';
             console.warn('Avatar not found at path:', avatarPath || img.src);
@@ -1627,17 +1632,22 @@
             message.sender_avatar = normalizedSenderAvatar;
         }
 
+        let headerAvatarUrl = null;
+        if (!isVisitor) {
+            if (widgetData?.avatar_url) {
+                headerAvatarUrl = widgetData.avatar_url;
+            } else if (widgetData?.avatar_path) {
+                headerAvatarUrl = getAvatarUrlCached(widgetData.avatar_path);
+            }
+        }
+
         let senderAvatarUrl = null;
         if (normalizedSenderAvatar || message.sender_avatar) {
             senderAvatarUrl = getAvatarUrlCached(normalizedSenderAvatar || message.sender_avatar);
         }
 
-        if (!senderAvatarUrl && !isVisitor) {
-            if (widgetData?.avatar_url) {
-                senderAvatarUrl = widgetData.avatar_url;
-            } else if (widgetData?.avatar_path) {
-                senderAvatarUrl = getAvatarUrlCached(widgetData.avatar_path);
-            }
+        if (!senderAvatarUrl && headerAvatarUrl) {
+            senderAvatarUrl = headerAvatarUrl;
         }
 
         if (!senderAvatarUrl && !isVisitor && widgetData?.avatar_path) {
@@ -1653,6 +1663,10 @@
             senderAvatarUrl = defaultAvatarUrl;
         }
 
+        const fallbackAvatarUrl = !isVisitor && headerAvatarUrl && senderAvatarUrl !== headerAvatarUrl
+            ? headerAvatarUrl
+            : null;
+
         // Se tiver sender_avatar (imagem), mostrar a imagem
         if (senderAvatarUrl) {
             const avatarImg = document.createElement('img');
@@ -1662,7 +1676,7 @@
             avatarImg.style.height = '100%';
             avatarImg.style.objectFit = 'cover';
             avatarImg.style.borderRadius = '2px';
-            attachAvatarFallback(avatarImg, normalizedSenderAvatar);
+            attachAvatarFallback(avatarImg, normalizedSenderAvatar, fallbackAvatarUrl);
             avatar.appendChild(avatarImg);
         } else {
             // Fallback para inicial do nome - sempre mostrar pelo menos uma letra

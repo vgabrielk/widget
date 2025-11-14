@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Helper function to create CORS headers
+function getCorsHeaders(origin: string | null) {
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
+  };
+}
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin') || '*';
+  return new NextResponse(null, {
+    status: 200,
+    headers: getCorsHeaders(origin),
+  });
+}
+
 // Helper function to get client IP
 function getClientIP(request: NextRequest): string {
   // Try various headers (for proxies/load balancers)
@@ -28,6 +47,9 @@ function getUserAgent(request: NextRequest): string {
  * POST /api/visitor/track
  */
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   try {
     const body = await request.json();
     const { visitor_id, fingerprint_data, page_url, page_title } = body;
@@ -35,7 +57,7 @@ export async function POST(request: NextRequest) {
     if (!visitor_id) {
       return NextResponse.json(
         { error: 'visitor_id is required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -63,7 +85,7 @@ export async function POST(request: NextRequest) {
           banned: true,
           reason: existingVisitor.ban_reason || 'No reason provided',
         },
-        { status: 403 }
+        { status: 403, headers: corsHeaders }
       );
     }
 
@@ -88,14 +110,14 @@ export async function POST(request: NextRequest) {
         console.error('[Visitor Track API] Error updating visitor:', updateError);
         return NextResponse.json(
           { error: 'Failed to update visitor' },
-          { status: 500 }
+          { status: 500, headers: corsHeaders }
         );
       }
 
       return NextResponse.json({
         visitor: updatedVisitor,
         banned: false,
-      });
+      }, { headers: corsHeaders });
     } else {
       // Create new visitor
       const { data: newVisitor, error: createError } = await supabase
@@ -118,20 +140,20 @@ export async function POST(request: NextRequest) {
         console.error('[Visitor Track API] Error creating visitor:', createError);
         return NextResponse.json(
           { error: 'Failed to create visitor' },
-          { status: 500 }
+          { status: 500, headers: corsHeaders }
         );
       }
 
       return NextResponse.json({
         visitor: newVisitor,
         banned: false,
-      });
+      }, { headers: corsHeaders });
     }
   } catch (error: any) {
     console.error('[Visitor Track API] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -141,6 +163,9 @@ export async function POST(request: NextRequest) {
  * GET /api/visitor/track?visitor_id=xxx
  */
 export async function GET(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const visitor_id = searchParams.get('visitor_id');
@@ -148,7 +173,7 @@ export async function GET(request: NextRequest) {
     if (!visitor_id) {
       return NextResponse.json(
         { error: 'visitor_id is required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -164,7 +189,7 @@ export async function GET(request: NextRequest) {
       console.error('[Visitor Track API] Error checking visitor:', error);
       return NextResponse.json(
         { error: 'Failed to check visitor' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -172,12 +197,12 @@ export async function GET(request: NextRequest) {
       banned: visitor?.banned || false,
       reason: visitor?.ban_reason || null,
       exists: !!visitor,
-    });
+    }, { headers: corsHeaders });
   } catch (error: any) {
     console.error('[Visitor Track API] Error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
