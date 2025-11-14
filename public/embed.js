@@ -47,7 +47,7 @@
     border: none;
     z-index: 999999;
     box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-    border-radius: 16px;
+    border-radius: 2px;
     display: none;
   `;
   
@@ -80,7 +80,7 @@
     bottom: 24px;
     width: 60px;
     height: 60px;
-    border-radius: 50%;
+    border-radius: 2px;
     background-color: ${settings.brandColor};
     color: white;
     border: none;
@@ -110,7 +110,7 @@
     color: white;
     font-size: 12px;
     font-weight: bold;
-    border-radius: 50%;
+    border-radius: 2px;
     width: 24px;
     height: 24px;
     display: flex;

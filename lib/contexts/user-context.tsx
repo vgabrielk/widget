@@ -1,18 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
-
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  company_name: string | null;
-  avatar_url: string | null;
-  created_at: string;
-  updated_at: string;
-}
+import { UserProfile } from '@/lib/types/profile';
 
 interface UserContextType {
   user: User | null;
@@ -34,16 +24,22 @@ interface CachedProfile {
   timestamp: number;
 }
 
-export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+interface UserProviderProps {
+  children: React.ReactNode;
+  initialUser?: User | null;
+  initialProfile?: UserProfile | null;
+}
+
+export function UserProvider({
+  children,
+  initialUser = null,
+  initialProfile = null,
+}: UserProviderProps) {
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [profile, setProfile] = useState<UserProfile | null>(initialProfile);
+  const [loading, setLoading] = useState(Boolean(initialUser) && !initialProfile);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClient();
   const fetchingProfileRef = useRef(false);
-  const initializedRef = useRef(false);
-  const loadedUserIdRef = useRef<string | null>(null); // Track loaded user ID to prevent stale updates
-  const backgroundRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load from cache
   const loadFromCache = useCallback((): UserProfile | null => {
@@ -99,7 +95,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Fetch profile from database via API route
-  const fetchProfile = useCallback(async (userId: string, forceFresh = false): Promise<UserProfile | null> => {
+  const fetchProfile = useCallback(async (_userId: string, forceFresh = false): Promise<UserProfile | null> => {
     // Prevent multiple simultaneous fetches
     if (fetchingProfileRef.current && !forceFresh) {
       return null;
@@ -110,7 +106,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/user/profile', {
         credentials: 'include', // CRITICAL: Include cookies for auth
-        cache: forceFresh ? 'no-store' : 'default',
+        cache: forceFresh ? 'no-store' : 'force-cache',
         // Add timestamp only for fresh fetches to prevent caching
         ...(forceFresh && { headers: { 'Cache-Control': 'no-cache' } }),
       });
@@ -264,132 +260,86 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, saveToCache]); // Removed profile and getAvatarFilePath from deps
 
-  // Initialize user and profile
+  // Sync session coming from the server
   useEffect(() => {
-    // Prevent multiple initializations
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    
-    const initializeUser = async () => {
+    if (!initialUser) {
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+      setError(null);
+      clearCache();
+      return;
+    }
+
+    setUser(initialUser);
+  }, [initialUser, clearCache]);
+
+  // Resolve initial profile data using server payload, cache or API fallback
+  useEffect(() => {
+    if (!initialUser) {
+      return;
+    }
+
+    setError(null);
+
+    if (initialProfile) {
+      setProfile(initialProfile);
+      saveToCache(initialProfile);
+      setLoading(false);
+      return;
+    }
+
+    const cachedProfile = loadFromCache();
+    if (cachedProfile && cachedProfile.id === initialUser.id) {
+      setProfile(cachedProfile);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const resolveProfile = async () => {
+      setLoading(true);
       try {
-        // Get current user
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        
-        if (!currentUser) {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-          clearCache();
-          initializedRef.current = false;
-          return;
-        }
+        let profileData = await fetchProfile(initialUser.id, true);
 
-        setUser(currentUser);
-        loadedUserIdRef.current = currentUser.id;
+        if (!profileData && initialUser.email) {
+          const createRes = await fetch('/api/user/profile', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              email: initialUser.email,
+            }),
+          });
 
-        // Try to load from cache first
-        const cachedProfile = loadFromCache();
-        if (cachedProfile && cachedProfile.id === currentUser.id) {
-          setProfile(cachedProfile);
-          setLoading(false);
-          
-          // DISABLED: Background refresh causes unnecessary API calls when messages arrive
-          // Only refresh profile when explicitly requested via refreshProfile()
-          // The cache is valid for 5 minutes, which is sufficient for most use cases
-          
-          // If you need fresh data, use refreshProfile() explicitly or wait for cache expiry
-        } else {
-          // No cache, fetch from database via API
-          const profileData = await fetchProfile(currentUser.id, true);
-          if (profileData) {
-            setProfile(profileData);
-            saveToCache(profileData);
-          } else {
-            // Profile doesn't exist, create it via API
-            try {
-              const createRes = await fetch('/api/user/profile', {
-                method: 'PATCH',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                  email: currentUser.email || '',
-                }),
-              });
-
-              if (createRes.ok) {
-                const createData = await createRes.json();
-                if (createData.profile) {
-                  setProfile(createData.profile as UserProfile);
-                  saveToCache(createData.profile as UserProfile);
-                }
-              }
-            } catch (err) {
-              console.error('Error creating profile:', err);
-            }
+          if (createRes.ok) {
+            const createData = await createRes.json();
+            profileData = (createData.profile as UserProfile) || null;
           }
-          setLoading(false);
         }
+
+        if (!isMounted || !profileData) return;
+
+        setProfile(profileData);
+        saveToCache(profileData);
       } catch (err: any) {
-        setError(err.message);
+        if (!isMounted) return;
+        setError(err.message || 'Failed to load profile');
+      } finally {
+        if (!isMounted) return;
         setLoading(false);
-        initializedRef.current = false;
       }
     };
 
-    initializeUser();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setProfile(null);
-        clearCache();
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        setUser(session.user);
-        initializedRef.current = false;
-        const profileData = await fetchProfile(session.user.id, true);
-        if (profileData) {
-          setProfile(profileData);
-          saveToCache(profileData);
-        } else {
-          // Create profile if doesn't exist via API
-          try {
-            const createRes = await fetch('/api/user/profile', {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              credentials: 'include',
-              body: JSON.stringify({
-                email: session.user.email || '',
-              }),
-            });
-
-            if (createRes.ok) {
-              const createData = await createRes.json();
-              if (createData.profile) {
-                setProfile(createData.profile as UserProfile);
-                saveToCache(createData.profile as UserProfile);
-              }
-            }
-          } catch (err) {
-            console.error('Error creating profile on sign in:', err);
-          }
-        }
-      }
-    });
+    resolveProfile();
 
     return () => {
-      subscription.unsubscribe();
-      // Clear background refresh timeout on unmount
-      if (backgroundRefreshTimeoutRef.current) {
-        clearTimeout(backgroundRefreshTimeoutRef.current);
-        backgroundRefreshTimeoutRef.current = null;
-      }
+      isMounted = false;
     };
-  }, [supabase, loadFromCache, saveToCache, clearCache, fetchProfile, getAvatarFilePath]);
+  }, [initialUser, initialProfile, loadFromCache, saveToCache, fetchProfile]);
 
   // Memoize the context value to prevent unnecessary re-renders of all consumers
   const value: UserContextType = useMemo(() => ({

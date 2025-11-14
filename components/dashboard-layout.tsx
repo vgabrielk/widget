@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { DashboardSidebar } from './dashboard-sidebar';
 import { NotificationBell } from './notification-bell';
 import { createClient } from '@/lib/supabase/client';
+import { useUser } from '@/lib/contexts/user-context';
 import { Search, Menu } from 'lucide-react';
 import { Input } from './ui/input';
 import { ThemeToggle } from './theme-toggle';
@@ -28,16 +29,9 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const router = useRouter();
   const supabase = createClient();
-  const [userId, setUserId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id || null);
-    };
-    getUser();
-  }, []);
+  const { user } = useUser();
+  const userId = user?.id ?? null;
 
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();

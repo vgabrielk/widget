@@ -1,7 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Widget, Subscription } from '@/lib/types/saas';
+import { Widget } from '@/lib/types/saas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,24 +16,12 @@ import {
   Activity,
   ArrowUpRight
 } from 'lucide-react';
+import { requireUser } from '@/lib/auth/session';
+import { getUserWidgets } from '@/lib/data/widgets';
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect('/auth/login');
-  }
-
-  // Get user's widgets
-  const { data: widgets } = await supabase
-    .from('widgets')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false });
+  const user = await requireUser();
+  const widgets = await getUserWidgets(user.id);
 
   // Simplified plan detection - removed heavy Stripe API calls from SSR
   // Subscription info is fetched client-side when needed
@@ -45,8 +31,8 @@ export default async function DashboardPage() {
   const isActive = false;
 
   // Get total stats
-  const totalConversations = widgets?.reduce((sum, w) => sum + (w.total_conversations || 0), 0) || 0;
-  const totalMessages = widgets?.reduce((sum, w) => sum + (w.total_messages || 0), 0) || 0;
+  const totalConversations = widgets.reduce((sum, w) => sum + (w.total_conversations || 0), 0);
+  const totalMessages = widgets.reduce((sum, w) => sum + (w.total_messages || 0), 0);
 
   return (
     <DashboardLayout
@@ -92,7 +78,7 @@ export default async function DashboardPage() {
                 <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">
                   Widgets
                 </CardTitle>
-                <div className="text-2xl sm:text-3xl font-bold">{widgets?.length || 0}</div>
+                <div className="text-2xl sm:text-3xl font-bold">{widgets.length}</div>
               </div>
               <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-primary/10">
                 <Zap className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
@@ -188,7 +174,7 @@ export default async function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
-            {!widgets || widgets.length === 0 ? (
+            {widgets.length === 0 ? (
               <div className="text-center py-12 sm:py-16">
                 <div className="flex justify-center mb-4 sm:mb-6">
                   <div className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-primary/10">

@@ -1,28 +1,38 @@
-import { updateSession } from "@/lib/supabase/middleware";
-import { checkEntitlements } from "@/lib/middleware/entitlements";
 import { type NextRequest, NextResponse } from "next/server";
+import { hasSessionCookie, isPublicApiRoute } from "@/lib/supabase/middleware";
 
-export async function middleware(request: NextRequest) {
-  // First, update Supabase session
-  const sessionResponse = await updateSession(request);
-  
-  // If session update returns a redirect, use it
-  if (sessionResponse && sessionResponse instanceof NextResponse) {
-    if (sessionResponse.status === 307 || sessionResponse.status === 308) {
-      return sessionResponse;
-    }
+const AUTH_ROUTES = ['/auth', '/login', '/signup'];
+const PROTECTED_PREFIXES = ['/dashboard', '/admin'];
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith('/api/') || isPublicApiRoute(pathname)) {
+    return NextResponse.next();
   }
 
-  // Then, check entitlements
-  const entitlementsResponse = await checkEntitlements(request);
-  
-  // If entitlements check returns a redirect, use it
-  if (entitlementsResponse && entitlementsResponse instanceof NextResponse) {
-    return entitlementsResponse;
+  const isProtected = PROTECTED_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+  const isAuthRoute = AUTH_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+  const hasSession = hasSessionCookie(request);
+
+  if (!hasSession && isProtected) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/login';
+    url.searchParams.set('redirect_to', pathname);
+    return NextResponse.redirect(url);
   }
 
-  // Otherwise, return the session response or a pass-through
-  return sessionResponse || NextResponse.next();
+  if (hasSession && isAuthRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

@@ -95,7 +95,7 @@ function addMessageToUI(message) {
     bubble.style.cssText = `
         max-width: 70%;
         padding: 12px 16px;
-        border-radius: 16px;
+        border-radius: 2px;
         ${isVisitor ? `
             background: ${widgetData.brand_color};
             color: white;
@@ -123,7 +123,7 @@ function addMessageToUI(message) {
         img.style.cssText = `
             max-width: 200px;
             max-height: 200px;
-            border-radius: 8px;
+            border-radius: 2px;
             margin-top: ${message.content ? '8px' : '0'};
             cursor: pointer;
             display: block;

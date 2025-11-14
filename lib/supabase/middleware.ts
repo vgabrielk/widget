@@ -1,81 +1,28 @@
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server';
 
-export async function updateSession(request: NextRequest) {
-  // CRITICAL: Skip middleware for API routes that don't need auth
-  const pathname = request.nextUrl.pathname;
-  
-  // Skip auth for public API routes (widget, visitor endpoints, etc)
-  if (pathname.startsWith('/api/widget') ||
-      pathname.startsWith('/api/visitor') ||
-      pathname.startsWith('/api/upload-image') ||
-      pathname.startsWith('/api/debug')) {
-    return NextResponse.next();
-  }
+const SESSION_COOKIE_NAMES = ['sb-access-token', 'sb-refresh-token'];
+const SESSION_COOKIE_PREFIXES = [
+  'sb-', // e.g. sb-projectref-auth-token, sb-projectref-auth-token.0
+  'supabase.auth.token',
+  'supabase-auth-token',
+];
+const PUBLIC_API_PREFIXES = ['/api/widget', '/api/visitor', '/api/upload-image', '/api/debug'];
 
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+export function hasSessionCookie(request: NextRequest) {
+  const cookies = request.cookies.getAll();
 
-  // With Fluid compute, don't put this client in a global environment
-  // variable. Always create a new one on each request.
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
+  return cookies.some(({ name }) => {
+    if (SESSION_COOKIE_NAMES.includes(name)) {
+      return true;
     }
-  )
 
-  // Do not run code between createServerClient and
-  // supabase.auth.getClaims(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
-  // IMPORTANT: If you remove getClaims() and you use server-side rendering
-  // with the Supabase client, your users may be randomly logged out.
-  const { data } = await supabase.auth.getClaims()
-  const user = data?.claims
-
-  // Allow access to auth pages (login, signup, etc.) without authentication
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/signup') &&
-    !request.nextUrl.pathname.startsWith('/auth')
-  ) {
-    // no user, potentially respond by redirecting the user to the login page
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  // IMPORTANT: You *must* return the supabaseResponse object as it is.
-  // If you're creating a new response object with NextResponse.next() make sure to:
-  // 1. Pass the request in it, like so:
-  //    const myNewResponse = NextResponse.next({ request })
-  // 2. Copy over the cookies, like so:
-  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
-  // 3. Change the myNewResponse object to fit your needs, but avoid changing
-  //    the cookies!
-  // 4. Finally:
-  //    return myNewResponse
-  // If this is not done, you may be causing the browser and server to go out
-  // of sync and terminate the user's session prematurely!
-
-  return supabaseResponse
+    return SESSION_COOKIE_PREFIXES.some((prefix) =>
+      name.startsWith(prefix)
+    );
+  });
 }
 
+export function isPublicApiRoute(pathname: string) {
+  return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 

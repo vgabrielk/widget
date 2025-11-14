@@ -359,7 +359,7 @@
                 background: #F3F4F6;
                 color: #6B7280;
                 padding: 8px 16px;
-                border-radius: 12px;
+                border-radius: 2px;
                 font-size: 12px;
                 text-align: center;
                 max-width: 80%;
@@ -395,7 +395,7 @@
         avatar.style.cssText = `
             width: 32px;
             height: 32px;
-            border-radius: 50%;
+            border-radius: 2px;
             background: ${isAgent ? widgetData.brand_color : '#E5E7EB'};
             color: ${isAgent ? 'white' : '#374151'};
             display: flex;
@@ -411,7 +411,7 @@
         const bubble = document.createElement('div');
         bubble.style.cssText = `
             padding: 12px 16px;
-            border-radius: 18px;
+            border-radius: 2px;
             word-wrap: break-word;
             overflow-wrap: break-word;
             ${isAgent ? `
@@ -439,7 +439,7 @@
             img.style.cssText = `
                 max-width: 200px;
                 max-height: 200px;
-                border-radius: 8px;
+                border-radius: 2px;
                 margin-top: ${message.content ? '8px' : '0'};
                 cursor: pointer;
                 display: block;
@@ -564,7 +564,7 @@
                 width: 12px;
                 height: 12px;
                 background: #EF4444;
-                border-radius: 50%;
+                border-radius: 2px;
                 border: 2px solid white;
             `;
             button.appendChild(badge);
@@ -587,7 +587,7 @@
                 bottom: 24px;
                 width: 56px;
                 height: 56px;
-                border-radius: 50%;
+                border-radius: 2px;
                 background: ${widgetData.brand_color};
                 color: white;
                 border: none;
@@ -614,7 +614,7 @@
                 height: 600px;
                 max-height: calc(100vh - 48px);
                 background: white;
-                border-radius: 16px;
+                border-radius: 2px;
                 box-shadow: 0 8px 32px rgba(0,0,0,0.12);
                 display: ${isOpen ? 'flex' : 'none'};
                 flex-direction: column;
@@ -652,7 +652,7 @@
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        border-radius: 6px;
+                        border-radius: 2px;
                     " onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='none'">×</button>
                 </div>
 
@@ -700,7 +700,7 @@
                             width: 64px;
                             height: 64px;
                             background: ${widgetData.brand_color};
-                            border-radius: 50%;
+                            border-radius: 2px;
                             display: flex;
                             align-items: center;
                             justify-content: center;
@@ -730,7 +730,7 @@
                                     width: 100%;
                                     padding: 12px 14px;
                                     border: 1px solid #E5E7EB;
-                                    border-radius: 8px;
+                                    border-radius: 2px;
                                     font-size: 14px;
                                     outline: none;
                                     box-sizing: border-box;
@@ -751,7 +751,7 @@
                                     width: 100%;
                                     padding: 12px 14px;
                                     border: 1px solid #E5E7EB;
-                                    border-radius: 8px;
+                                    border-radius: 2px;
                                     font-size: 14px;
                                     outline: none;
                                     box-sizing: border-box;
@@ -768,7 +768,7 @@
                                 color: white;
                                 border: none;
                                 padding: 12px 24px;
-                                border-radius: 8px;
+                                border-radius: 2px;
                                 font-size: 15px;
                                 font-weight: 600;
                                 cursor: pointer;
@@ -808,7 +808,7 @@
                             border: 1px solid #FECACA;
                             color: #991B1B;
                             padding: 10px;
-                            border-radius: 8px;
+                            border-radius: 2px;
                             margin-bottom: 12px;
                             text-align: center;
                             font-size: 12px;
@@ -818,14 +818,14 @@
 
                         <div id="chat-widget-image-preview" style="display: none; margin-bottom: 12px;">
                             <div style="position: relative; display: inline-block;">
-                                <img id="chat-widget-preview-img" style="max-width: 150px; max-height: 100px; border-radius: 8px; border: 2px solid #E5E7EB;" />
+                                <img id="chat-widget-preview-img" style="max-width: 150px; max-height: 100px; border-radius: 2px; border: 2px solid #E5E7EB;" />
                                 <button id="chat-widget-remove-image" style="
                                     position: absolute;
                                     top: -6px;
                                     right: -6px;
                                     width: 20px;
                                     height: 20px;
-                                    border-radius: 50%;
+                                    border-radius: 2px;
                                     background: #EF4444;
                                     color: white;
                                     border: none;
@@ -843,7 +843,7 @@
                             <div style="
                                 width: 32px;
                                 height: 32px;
-                                border-radius: 50%;
+                                border-radius: 2px;
                                 background: #E5E7EB;
                                 color: #374151;
                                 display: flex;
@@ -863,7 +863,7 @@
                                     flex: 1;
                                     padding: 12px 14px;
                                     border: 1px solid #E5E7EB;
-                                    border-radius: 24px;
+                                    border-radius: 2px;
                                     font-size: 14px;
                                     outline: none;
                                     background: #F9FAFB;
@@ -909,7 +909,7 @@
                                 background: ${widgetData.brand_color};
                                 color: white;
                                 border: none;
-                                border-radius: 50%;
+                                border-radius: 2px;
                                 width: 40px;
                                 height: 40px;
                                 cursor: pointer;
