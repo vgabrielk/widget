@@ -50,6 +50,52 @@
     let selectedImage = null;
     let heartbeatInterval = null;
     
+    const ICON_PATHS = {
+        MessageSquare: [
+            { tag: 'path', attrs: { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' } }
+        ],
+        MessageCircle: [
+            { tag: 'path', attrs: { d: 'M7.9 20A9 9 0 1 0 4 16.1L2 22Z' } }
+        ],
+        Headphones: [
+            { tag: 'path', attrs: { d: 'M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3' } }
+        ],
+        HelpCircle: [
+            { tag: 'circle', attrs: { cx: '12', cy: '12', r: '10' } },
+            { tag: 'path', attrs: { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' } },
+            { tag: 'path', attrs: { d: 'M12 17h.01' } }
+        ],
+        Bot: [
+            { tag: 'path', attrs: { d: 'M12 8V4H8' } },
+            { tag: 'rect', attrs: { width: '16', height: '12', x: '4', y: '8', rx: '2' } },
+            { tag: 'path', attrs: { d: 'M2 14h2' } },
+            { tag: 'path', attrs: { d: 'M20 14h2' } },
+            { tag: 'path', attrs: { d: 'M15 13v2' } },
+            { tag: 'path', attrs: { d: 'M9 13v2' } }
+        ]
+    };
+
+    function renderIcon(iconName, options = {}) {
+        const nodes = ICON_PATHS[iconName] || ICON_PATHS.MessageSquare;
+        const {
+            size = 24,
+            stroke = 'currentColor',
+            strokeWidth = 2,
+            fill = 'none'
+        } = options;
+
+        const serializeAttrs = (attrs = {}) =>
+            Object.entries(attrs)
+                .map(([key, value]) => `${key}="${value}"`)
+                .join(' ');
+
+        const content = nodes
+            .map(({ tag, attrs }) => `<${tag} ${serializeAttrs(attrs)}></${tag}>`)
+            .join('');
+
+        return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${content}</svg>`;
+    }
+
     // Rate limiting
     const RATE_LIMIT = {
         maxMessages: 10,        // Máximo de mensagens
@@ -106,7 +152,7 @@
                 bottom: calc(24px + env(safe-area-inset-bottom));
                 width: 56px;
                 height: 56px;
-                border-radius: 50%;
+                border-radius: 2px;
                 background: ${brandColor};
                 color: white;
                 border: none;
@@ -134,7 +180,7 @@
                 height: 600px;
                 max-height: calc(100vh - 48px - env(safe-area-inset-bottom) - env(safe-area-inset-top));
                 background: white;
-                border-radius: 16px;
+                border-radius: 2px;
                 box-shadow: 0 8px 32px rgba(0,0,0,0.12);
                 flex-direction: column;
                 z-index: 999999;
@@ -173,7 +219,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                border-radius: 6px;
+                border-radius: 2px;
                 transition: background 0.2s;
             }
 
@@ -194,7 +240,7 @@
                 width: 64px;
                 height: 64px;
                 background: ${brandColor};
-                border-radius: 50%;
+                border-radius: 2px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -217,7 +263,7 @@
                 width: 100%;
                 padding: 12px 14px;
                 border: 1px solid #E5E7EB;
-                border-radius: 8px;
+                border-radius: 2px;
                 font-size: 14px;
                 outline: none;
                 box-sizing: border-box;
@@ -232,7 +278,7 @@
                 color: white;
                 border: none;
                 padding: 12px 24px;
-                border-radius: 8px;
+                border-radius: 2px;
                 font-size: 15px;
                 font-weight: 600;
                 cursor: pointer;
@@ -284,7 +330,7 @@
                 border: 1px solid #FECACA;
                 color: #991B1B;
                 padding: 12px;
-                border-radius: 8px;
+                border-radius: 2px;
                 margin-bottom: 12px;
                 text-align: center;
                 font-size: 13px;
@@ -295,7 +341,7 @@
                 color: white;
                 border: none;
                 padding: 12px 20px;
-                border-radius: 8px;
+                border-radius: 2px;
                 font-size: 14px;
                 font-weight: 600;
                 cursor: pointer;
@@ -330,7 +376,7 @@
             .chat-widget-preview-img {
                 max-width: 150px;
                 max-height: 100px;
-                border-radius: 8px;
+                border-radius: 2px;
                 border: 2px solid #E5E7EB;
             }
 
@@ -340,7 +386,7 @@
                 right: -6px;
                 width: 20px;
                 height: 20px;
-                border-radius: 50%;
+                border-radius: 2px;
                 background: #EF4444;
                 color: white;
                 border: none;
@@ -361,7 +407,7 @@
                 flex: 1;
                 padding: 12px 14px;
                 border: 1px solid #E5E7EB;
-                border-radius: 24px;
+                border-radius: 2px;
                 font-size: 16px;
                 outline: none;
                 background: #F9FAFB;
@@ -385,7 +431,7 @@
                 background: ${brandColor};
                 color: white;
                 border: none;
-                border-radius: 50%;
+                border-radius: 2px;
                 width: 40px;
                 height: 40px;
                 cursor: pointer;
@@ -424,7 +470,7 @@
             .chat-message-avatar {
                 width: 32px;
                 height: 32px;
-                border-radius: 50%;
+                border-radius: 2px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -445,7 +491,7 @@
 
             .chat-message-bubble {
                 padding: 12px 16px;
-                border-radius: 18px;
+                border-radius: 2px;
                 word-wrap: break-word;
                 overflow-wrap: break-word;
             }
@@ -477,7 +523,7 @@
             .chat-message-image {
                 max-width: 200px;
                 max-height: 200px;
-                border-radius: 8px;
+                border-radius: 2px;
                 margin-top: 8px;
                 cursor: pointer;
                 display: block;
@@ -512,7 +558,7 @@
                 background: #F3F4F6;
                 color: #6B7280;
                 padding: 8px 16px;
-                border-radius: 12px;
+                border-radius: 2px;
                 font-size: 12px;
                 text-align: center;
                 max-width: 80%;
@@ -526,7 +572,7 @@
                 width: 12px;
                 height: 12px;
                 background: #EF4444;
-                border-radius: 50%;
+                border-radius: 2px;
                 border: 2px solid white;
                 animation: chat-widget-pulse 2s infinite;
             }
@@ -540,7 +586,7 @@
                 border: 2px solid #EF4444;
                 color: #991B1B;
                 padding: 16px 20px;
-                border-radius: 8px;
+                border-radius: 2px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.15);
                 z-index: 9999999;
                 max-width: 300px;
@@ -632,7 +678,7 @@
             chatWindow.style.setProperty('height', 'calc(100vh - env(safe-area-inset-bottom))', 'important');
             chatWindow.style.setProperty('max-width', '100vw', 'important');
             chatWindow.style.setProperty('max-height', 'calc(100vh - env(safe-area-inset-bottom))', 'important');
-            chatWindow.style.setProperty('border-radius', '0', 'important');
+            chatWindow.style.setProperty('border-radius', '2px', 'important');
             chatWindow.style.setProperty('box-shadow', 'none', 'important');
             chatWindow.style.setProperty('margin', '0', 'important');
             
@@ -1491,7 +1537,7 @@
             avatarImg.style.width = '100%';
             avatarImg.style.height = '100%';
             avatarImg.style.objectFit = 'cover';
-            avatarImg.style.borderRadius = '50%';
+            avatarImg.style.borderRadius = '2px';
             avatar.appendChild(avatarImg);
         } else {
             // Fallback para inicial do nome - sempre mostrar pelo menos uma letra
@@ -1622,12 +1668,11 @@
     function createWidgetUI() {
         const container = document.createElement('div');
         container.id = 'chat-widget-container';
+        const iconName = widgetData.icon_name || 'MessageSquare';
         container.innerHTML = `
             <!-- Chat Button -->
             <button id="chat-widget-button" style="display: ${isOpen ? 'none' : 'flex'};">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                </svg>
+                ${renderIcon(iconName, { stroke: 'currentColor', size: 24 })}
             </button>
 
             <!-- Chat Window -->
@@ -1635,8 +1680,8 @@
                 <!-- Header -->
                 <div class="chat-widget-header">
                     ${widgetData.avatar_url 
-                        ? `<img src="${widgetData.avatar_url}" alt="${widgetData.company_name || 'Logo'}" class="chat-widget-header-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />`
-                        : `<div class="chat-widget-header-avatar-fallback" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px; flex-shrink: 0;">${(widgetData.company_name || 'C').substring(0, 1).toUpperCase()}</div>`
+                        ? `<img src="${widgetData.avatar_url}" alt="${widgetData.company_name || 'Logo'}" class="chat-widget-header-avatar" style="width: 32px; height: 32px; border-radius: 2px; object-fit: cover; flex-shrink: 0;" />`
+                        : `<div class="chat-widget-header-avatar-fallback" style="width: 32px; height: 32px; border-radius: 2px; background: rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px; flex-shrink: 0;">${(widgetData.company_name || 'C').substring(0, 1).toUpperCase()}</div>`
                     }
                     <button id="chat-widget-close" class="chat-widget-close-btn">×</button>
                     </div>
@@ -1645,9 +1690,7 @@
                 <div id="chat-widget-welcome-form" style="display: ${hasSubmittedInfo ? 'none' : 'flex'};">
                         <div style="text-align: center; margin-bottom: 24px;">
                         <div class="chat-widget-welcome-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                </svg>
+                            ${renderIcon(iconName, { stroke: 'white', size: 32 })}
                             </div>
                         <h3 style="margin: 0 0 8px 0; font-size: 20px; color: #111827; font-weight: 600;">Welcome!</h3>
                         <p style="margin: 0; font-size: 14px; color: #6B7280;">Tell us a bit about yourself to get started</p>

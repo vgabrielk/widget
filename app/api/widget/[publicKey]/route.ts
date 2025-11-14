@@ -89,7 +89,7 @@ export async function GET(
     // Get widget config - fetch all and filter manually (RLS workaround)
     const { data: widgets, error } = await supabase
       .from('widgets')
-      .select('id, name, brand_color, position, welcome_message, company_name, domains, is_active, public_key, user_id')
+      .select('id, name, brand_color, position, welcome_message, company_name, domains, is_active, public_key, user_id, icon_name')
       .eq('is_active', true);
 
     if (error) {

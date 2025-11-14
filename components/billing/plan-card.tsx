@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, Zap } from 'lucide-react';
@@ -80,52 +80,83 @@ export function PlanCard({
     }
   };
 
+  const isEnterprise = name === 'Enterprise';
+  const priceLabel = typeof price === 'number' ? `R$ ${price.toFixed(2)}` : price;
+
+  const cardClasses = isPopular
+    ? 'border-primary/40 bg-gradient-to-br from-primary/5 via-white to-white shadow-[0_25px_60px_rgba(99,102,241,0.25)] dark:from-primary/15 dark:via-slate-900 dark:to-slate-900 dark:shadow-[0_25px_60px_rgba(15,23,42,0.55)]'
+    : 'border-border/60 bg-card/95 shadow-[0_15px_40px_rgba(15,23,42,0.12)] dark:border-border/40 dark:bg-slate-900/70 dark:shadow-[0_20px_45px_rgba(0,0,0,0.45)]';
+
   return (
-    <Card className={`card-clean ${isPopular ? 'border-primary' : ''}`}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>{name}</CardTitle>
-          {isPopular && <Badge>Popular</Badge>}
+    <Card
+      className={`relative overflow-hidden rounded-3xl border p-6 text-card-foreground transition-all hover:-translate-y-1 ${cardClasses}`}
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-80">
+        <div className="absolute -right-12 top-0 h-32 w-32 rounded-full bg-primary/10 blur-3xl dark:bg-primary/25" />
+        <div className="absolute -bottom-10 left-0 h-24 w-24 rounded-full bg-muted/70 blur-3xl dark:bg-slate-800/60" />
+      </div>
+
+      <div className="relative space-y-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Plano</p>
+            <CardTitle className="text-2xl font-semibold">{name}</CardTitle>
+            {description && (
+              <CardDescription className="mt-1 text-sm leading-relaxed">
+                {description}
+              </CardDescription>
+            )}
+          </div>
+          <div className="space-y-2 text-right">
+            {isPopular && (
+              <Badge className="rounded-full bg-primary/10 text-primary">
+                <Zap className="mr-1 h-3 w-3" />
+                Popular
+              </Badge>
+            )}
+            {isCurrent && (
+              <Badge variant="outline" className="rounded-full border-green-200 bg-green-50 text-green-700">
+                Plano Atual
+              </Badge>
+            )}
+          </div>
         </div>
-        <div className="mt-4">
-          <span className="text-4xl font-bold">
-            {typeof price === 'number' ? `R$ ${price.toFixed(2)}` : price}
-          </span>
-          {typeof price === 'number' && (
-            <span className="text-muted-foreground">/mês</span>
+
+        <div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold">{priceLabel}</span>
+            {typeof price === 'number' && <span className="text-muted-foreground">/mês</span>}
+          </div>
+          {!isEnterprise && (
+            <p className="text-xs text-muted-foreground">
+              4 dias grátis, depois {priceLabel}/mês
+            </p>
           )}
         </div>
-        {description && (
-          <CardDescription className="mt-2">{description}</CardDescription>
-        )}
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-3 mb-6">
+
+        <div className="space-y-3">
           {features.map((feature, index) => (
-            <li key={index} className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-green-600" />
-              <span className="text-sm">{feature}</span>
-            </li>
+            <div
+              key={index}
+              className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/80 px-4 py-2 text-sm shadow-sm dark:border-border/40 dark:bg-slate-900/60"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Check className="h-4 w-4" />
+              </div>
+              <span>{feature}</span>
+            </div>
           ))}
-        </ul>
+        </div>
+
         <Button
           variant={isCurrent ? 'secondary' : isPopular ? 'default' : 'outline'}
-          className="w-full"
-          onClick={name === 'Enterprise' ? onSelect : handleCheckout}
+          className="h-12 w-full rounded-2xl text-base font-medium"
+          onClick={isEnterprise ? onSelect : handleCheckout}
           disabled={disabled || isCurrent || !widgetId}
         >
-          {isCurrent
-            ? 'Plano Atual'
-            : name === 'Enterprise'
-            ? 'Contatar Vendas'
-            : 'Assinar Agora'}
+          {isCurrent ? 'Plano Atual' : isEnterprise ? 'Contatar Vendas' : 'Assinar Agora'}
         </Button>
-        {name !== 'Enterprise' && name !== 'Free' && (
-          <p className="text-xs text-center text-muted-foreground mt-2">
-            4 dias grátis, depois R$ {typeof price === 'number' ? price.toFixed(2) : price}/mês
-          </p>
-        )}
-      </CardContent>
+      </div>
     </Card>
   );
 }
