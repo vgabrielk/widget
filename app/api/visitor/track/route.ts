@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 // Helper function to create CORS headers
 function getCorsHeaders(origin: string | null) {
@@ -42,6 +42,17 @@ function getUserAgent(request: NextRequest): string {
   return request.headers.get('user-agent') || 'unknown';
 }
 
+function getServiceRoleClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase service role environment variables');
+  }
+
+  return createSupabaseClient(supabaseUrl, serviceRoleKey);
+}
+
 /**
  * Track visitor with fingerprinting data
  * POST /api/visitor/track
@@ -61,7 +72,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = getServiceRoleClient();
     const ip_address = getClientIP(request);
     const user_agent = getUserAgent(request);
 
@@ -177,7 +188,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = getServiceRoleClient();
 
     const { data: visitor, error } = await supabase
       .from('visitors')
